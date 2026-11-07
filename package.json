@@ -1,0 +1,12 @@
+{
+  "name": "mtg-bulk-deck-builder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Build Magic: The Gathering decks from your bulk cards. Static site, no build step.",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test tests/unit.test.mjs",
+    "test:e2e": "node tests/e2e.mjs"
+  }
+}
