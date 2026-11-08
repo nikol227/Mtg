@@ -18,7 +18,12 @@ It is a static site with no build step and no server. Your collection and decks 
 ## Features
 
 - **Import:** ManaBox CSV (matched by Scryfall ID). Most other scanner CSVs work too, and so does a pasted list (`1 Sol Ring`, `1x Sol Ring (C21) 263`, `Sol Ring`). Large piles (10k+) are fine.
-- **Commander finder:** 900 popular commanders plus every legend you own, ranked by how many of each commander's 100 most-played cards (on EDHREC) you have free. Each tile also shows whether you own the commander itself.
+- **Commander finder:** 900 popular commanders plus every legend you own. Each tile shows:
+  - how many **eligible spells** you have for it (free, Commander-legal non-land cards within its colors) out of the 63 a deck needs, with a warning when the pile is too thin ("needs ~40 more BG spells");
+  - how many of its 100 most-played cards on EDHREC you own;
+  - whether you own the commander itself.
+
+  Commanders your pile can actually fill rank higher.
 - **Strategy and power bracket:** pick one of the EDHREC strategies for that commander (Tokens, +1/+1 Counters…) and a bracket from 1 (Exhibition) to 5 (cEDH). The bracket controls:
   - how many Game Changers can be included (none in brackets 1–2, up to 3 in bracket 3);
   - how many combos are added on purpose, and how strong they can be (using Spellbook's own bracket tags);

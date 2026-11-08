@@ -4,6 +4,7 @@ import { parseCSV, csvToImportRows, mergeRows } from '../js/csv.js';
 import { slimCard, castRequirements, canCastWith, cardRoles, commanderThemes } from '../js/cards.js';
 import {
   buildDeck, validateDeck, deckSize, deckStats, exportText, info, gamePlan, explain, suggestUpgrades, findDeckCombos, makeContext,
+  eligibleSpellCounter, thinness,
 } from '../js/builder.js';
 import { textToImportRows, looksLikeCSV } from '../js/csv.js';
 import { matchCombos, coverage } from '../js/data.js';
@@ -192,6 +193,20 @@ test('when your collection runs out, recommended cards to buy fill the gap inste
   assert.equal(explain('G Ramp', res.reasons['G Ramp'], {}).split('.')[0], 'Not in your collection: recommended to buy, because your own cards ran out');
   const issues = validateDeck({ cards: res.cards, commander: res.commander, toBuy: res.toBuy }, lookup, (n) => (own.includes(n) ? 1 : 0));
   assert.ok(!issues.some((i) => i.short && i.msg !== `${cmd.name}: not free in your collection (your commander).`), 'buy cards are not reported as missing');
+});
+
+test('eligible spell counts per commander and thin-pool warnings', () => {
+  const pool = makePool(1);
+  const spellsFor = eligibleSpellCounter(pool);
+  // Fixture: per color 6 MV x (4 creatures + removal + draw) + ramp = 37 spells; green also has Elf Lord; colorless Mind Stone = 1.
+  assert.equal(spellsFor(['G']), 37 + 1 + 1);
+  assert.equal(spellsFor(['G', 'W'], 'Elf Queen'), 38 + 37 + 1, 'GW cards count, the commander itself does not');
+  assert.equal(spellsFor([]), 1);
+  assert.deepEqual(thinness(80), { needed: 0, level: 'ok' });
+  assert.deepEqual(thinness(50), { needed: 13, level: 'some' });
+  assert.deepEqual(thinness(10), { needed: 53, level: 'thin' });
+  for (const e of pool) e.available = 0;
+  assert.equal(eligibleSpellCounter(pool)(['G']), 0, 'cards used in other decks do not count');
 });
 
 test('export text uses set and collector number', () => {

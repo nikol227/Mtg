@@ -450,6 +450,45 @@ export function gamePlan(deck, lookup, { edh = null, combosInDeck = [], themeLab
   return plan;
 }
 
+// ---------- how many usable spells your pile has for a commander ----------
+
+/** Non-land slots in a Commander deck (100 − commander − 36 lands). */
+export const SPELL_SLOTS = FORMAT.size - 1 - FORMAT.lands;
+
+/**
+ * Returns spellsFor(colors, commanderName) → how many different free, Commander-legal non-land
+ * cards you have within that color identity (each counts once: Commander is singleton).
+ * Tallies the pile once by color identity, so checking 900+ commanders is instant.
+ */
+export function eligibleSpellCounter(pool) {
+  const byMask = new Array(32).fill(0);
+  const seen = new Set();
+  const maskOf = new Map();
+  for (const e of pool) {
+    if (e.buy || e.available <= 0) continue;
+    const i = info(e.card);
+    if (i.land || i.basic || !i.playable || !legal(e.card) || seen.has(i.key)) continue;
+    seen.add(i.key);
+    byMask[i.identity]++;
+    maskOf.set(i.key, i.identity);
+  }
+  const totals = byMask.map((_, mask) => byMask.reduce((a, n, m) => ((m & ~mask) === 0 ? a + n : a), 0));
+  return (colors, commanderName = null) => {
+    const mask = colorMask(colors);
+    let n = totals[mask];
+    // The commander itself sits in the command zone, not in the 99.
+    const k = commanderName ? nameKey(commanderName) : null;
+    if (k && maskOf.has(k) && (maskOf.get(k) & ~mask) === 0) n--;
+    return n;
+  };
+}
+
+/** How buildable a commander is from your pile: 'ok' | 'some' | 'thin', plus how many more spells it needs. */
+export function thinness(spells) {
+  const needed = Math.max(0, SPELL_SLOTS - spells);
+  return { needed, level: needed === 0 ? 'ok' : spells >= SPELL_SLOTS * 0.6 ? 'some' : 'thin' };
+}
+
 // ---------- commander ranking for owned legends without EDHREC data ----------
 
 export function ownedCommanders(pool) {

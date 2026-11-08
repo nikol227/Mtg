@@ -1,5 +1,5 @@
 import { state, pool, saveDeck, newDeckId, collectionTotals, freeByKey, lookup } from '../store.js';
-import { ownedCommanders, info } from '../builder.js';
+import { ownedCommanders, info, eligibleSpellCounter, thinness, SPELL_SLOTS } from '../builder.js';
 import { popularCommanders, coverage } from '../data.js';
 import { commanderPage, BRACKETS, edhrecUrl } from '../edhrec.js';
 import { buildFor, safe } from '../engine.js';
@@ -47,9 +47,14 @@ async function rankedCommanders() {
     out.set(k, { name: e.name, slug: edhrecSlug(e.name), colors: e.card.color_identity, img: e.card.img_small || e.card.img, card: e.card, decks: 0, rank: null, themes: [], cov: { owned: 0, considered: 0, pct: null, ownCommander: true, topOwned: [] } });
   }
   const list = [...out.values()];
+  const spellsFor = eligibleSpellCounter(pool());
   for (const x of list) {
-    // Owning the commander matters a lot; popular commanders get a small nudge (better data).
-    x.score = (x.cov.pct ?? 0.15) * 100 + (x.cov.ownCommander ? 12 : 0) + Math.min(5, Math.log10(1 + x.decks));
+    x.spells = spellsFor(x.colors, x.name);
+    x.thin = thinness(x.spells);
+    // How much of the typical deck you own, how full a deck your pile can make at all,
+    // owning the commander, and a small nudge for popular commanders (better data).
+    x.score = (x.cov.pct ?? 0.1) * 60 + (Math.min(x.spells, SPELL_SLOTS) / SPELL_SLOTS) * 40
+      + (x.cov.ownCommander ? 12 : 0) + Math.min(5, Math.log10(1 + x.decks));
   }
   list.sort((a, b) => b.score - a.score);
   rankCache = { version: state.version, list, popularLoaded: !!popular };
@@ -110,11 +115,31 @@ function tile(x) {
     <span style="flex:1;min-width:0">
       <span class="t">${esc(x.name)}</span>
       <span class="d">${pipsHTML(x.colors)} ${x.cov.ownCommander ? '<span class="tag ok">In your collection</span>' : '<span class="tag">Commander not owned</span>'}</span>
+      <span class="d"><b>${x.spells}</b> eligible spell${x.spells === 1 ? '' : 's'} <span class="muted">of ${SPELL_SLOTS} needed</span></span>
+      ${thinHTML(x)}
       ${pct != null ? `<span class="d">You own <b>${x.cov.owned}</b> of its ${x.cov.considered} most-played cards</span>
-        <div class="strength" title="${pct}% match (weighted by how often each card is played)"><div style="width:${pct}%"></div></div>` : '<span class="d">Not in the popular list; EDHREC data loads when you pick it.</span>'}
-      ${x.decks ? `<span class="d">${x.decks.toLocaleString()} decks on EDHREC</span>` : ''}
+        <div class="strength" title="${pct}% match (weighted by how often each card is played)"><div style="width:${pct}%"></div></div>` : ''}
+      ${x.decks ? `<span class="d">${x.decks.toLocaleString()} decks on EDHREC</span>` : '<span class="d muted">Not in the popular list; EDHREC data loads when you pick it.</span>'}
     </span>
   </button>`;
+}
+
+const colorLabel = (colors) => (colors.length ? colors.join('') : 'colorless');
+
+/** Warning chip when the pile can't fill the 63 non-land slots. */
+function thinHTML(x) {
+  if (x.thin.level === 'ok') return '<span class="d"><span class="tag ok">Enough cards for a full deck</span></span>';
+  const cls = x.thin.level === 'thin' ? 'warn-chip' : 'tag';
+  const lead = x.thin.level === 'thin' ? 'Likely too thin to build: ' : '';
+  return `<span class="d"><span class="${cls}" title="Missing slots are filled with EDHREC recommendations to buy">⚠ ${lead}needs ~${x.thin.needed} more ${colorLabel(x.colors)} spells</span></span>`;
+}
+
+/** Before building: say how many of the 63 spell slots your pile can fill. */
+function buildWarning() {
+  const x = rankCache.list?.find((c) => c.name === v.commander);
+  if (!x || x.thin.level === 'ok') return '';
+  return `<div class="notice warn" style="margin-top:8px">⚠ Your collection has <b>${x.spells}</b> eligible ${colorLabel(x.colors)} spells for this commander, and a deck needs ${SPELL_SLOTS}.
+    About <b>${x.thin.needed}</b> slots will be filled with EDHREC's recommended cards that you'd need to buy (cheaper ones first). They'll be marked “Buy” in the deck.</div>`;
 }
 
 async function loadBase() {
@@ -177,6 +202,7 @@ function renderGo(root) {
       ${owned ? '' : '<b>You don\'t own this commander</b>, so you\'d need to get a copy.'}
       Basic lands are added automatically; everything else comes from your free cards.
     </p>
+    ${buildWarning()}
     <div id="build-error"></div>`;
   el.querySelector('#deck-name').addEventListener('input', (e) => { v.name = e.target.value; });
   el.querySelector('#go').addEventListener('click', async (e) => {

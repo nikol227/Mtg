@@ -119,6 +119,8 @@ await page.click('a[data-tab="build"]');
 await page.waitForSelector('[data-cmd="Elf Queen"]');
 const firstText = await page.textContent('#cmds .pick');
 assert.match(firstText, /You own \d+ of its \d+ most-played cards/);
+assert.match(firstText, /\d+ eligible spells of 63 needed/);
+assert.match(await page.textContent('[data-cmd="Popular Guy"]'), /needs ~\d+ more G spells/);
 if (shots) await page.screenshot({ path: `${shots}/2-commanders.png` });
 await page.click('[data-cmd="Elf Queen"]');
 await page.waitForSelector('#themes [data-theme="elves"]');
