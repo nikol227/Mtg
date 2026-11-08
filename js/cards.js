@@ -45,8 +45,24 @@ export function slimCard(c) {
     img_small: img.small || null,
     img_back: backImg ? backImg.normal : null,
     price: c.prices?.usd || c.prices?.usd_foil || null,
+    game_changer: !!c.game_changer,
   };
 }
+
+/** Name key that matches across Scryfall, EDHREC and Commander Spellbook (front face, case-insensitive). */
+export function nameKey(name) {
+  return String(name).split(' // ')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+/** EDHREC URL slug for a commander name, e.g. "Atraxa, Praetors' Voice" -> "atraxa-praetors-voice". */
+export function edhrecSlug(name) {
+  return String(name).split(' // ')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/['’,.!?]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+/** Cards that bracket rules care about. */
+export const isMassLandDenial = (c) => /(destroy|exile) all (nonbasic )?lands|each player sacrifices (all|a|two|half) lands?|lands don't untap|armageddon/i.test(c.oracle_text || '');
+export const isExtraTurn = (c) => /take an extra turn/i.test(c.oracle_text || '');
 
 /** Split a mana cost like "{2}{G}{G/W}" into symbols ["2","G","G/W"]. */
 export function manaSymbols(cost) {

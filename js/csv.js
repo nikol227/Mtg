@@ -131,3 +131,40 @@ export function mergeRows(rows) {
   }
   return [...map.values()];
 }
+
+// ---------- pasted text lists ----------
+
+const SECTION_RE = /^(commander|commanders|deck|main|mainboard|maindeck|sideboard|companion|maybeboard|considering|tokens?)\s*:?\s*$/i;
+const LINE_RE = /^(?:(\d+)\s*x?\s+)?(.+?)(?:\s+\(([a-z0-9]{2,6})\)(?:\s+([\w★-]+))?)?(?:\s+\*f\*|\s+\*foil\*)?\s*$/i;
+
+/**
+ * Parse a pasted list, one card per line: "1 Sol Ring", "1x Sol Ring (C21) 263", "Sol Ring".
+ * Section headers ("Commander", "Deck", "Sideboard") are recognised.
+ * Returns { rows: [{ identifier, qty, foil, label, line, section }], errors }
+ */
+export function textToImportRows(text) {
+  const rows = [];
+  const errors = [];
+  let section = 'main';
+  text.split(/\r?\n/).forEach((raw, idx) => {
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (!line || line.startsWith('//') || line.startsWith('#')) return;
+    if (SECTION_RE.test(line)) { section = line.toLowerCase().replace(/[:s]*$/, '').replace('commander', 'commander'); return; }
+    const m = line.match(LINE_RE);
+    if (!m) { errors.push({ line: idx + 1, message: `Couldn't read "${line}".` }); return; }
+    const qty = m[1] ? parseInt(m[1], 10) : 1;
+    const name = m[2].trim();
+    const set = m[3] ? m[3].toLowerCase() : null;
+    const cn = m[4] || null;
+    if (!qty) return;
+    const identifier = set && cn ? { set, collector_number: cn } : set ? { name, set } : { name };
+    rows.push({ identifier, qty, foil: /\*f(oil)?\*/i.test(line), label: name, line: idx + 1, section: section.startsWith('commander') ? 'commander' : section.startsWith('side') || section.startsWith('maybe') || section.startsWith('consider') || section.startsWith('token') ? 'side' : 'main' });
+  });
+  return { format: 'Pasted list', rows, errors };
+}
+
+/** Decide whether text is a CSV export or a plain list. */
+export function looksLikeCSV(text) {
+  const first = text.split(/\r?\n/, 1)[0].toLowerCase();
+  return /(^|[,;\t"])\s*(name|card name|quantity|qty|count|scryfall id)\s*("?)([,;\t]|$)/.test(first);
+}

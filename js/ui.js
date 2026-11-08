@@ -29,11 +29,16 @@ export function colorName(colors) {
   return GUILDS[key] || `${key.length}-Color`;
 }
 
-export function tileHTML(card, { badge = '', badgeClass = '', count = null, actions = '', theme = false, attrs = '' } = {}) {
+/** Scryfall image for any card by name (for cards you don't own, e.g. combo pieces). */
+export function cardImageURL(name, version = 'small') {
+  return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}&format=image&version=${version}`;
+}
+
+export function tileHTML(card, { badge = '', badgeClass = '', count = null, actions = '', theme = false, combo = false, attrs = '' } = {}) {
   const img = card.img
     ? `<img src="${esc(card.img)}" alt="${esc(card.name)}" loading="lazy" decoding="async">`
     : `<div class="fallback"><b>${esc(card.name)}</b>${manaHTML(card.mana_cost)}<span class="muted">${esc(card.type_line)}</span></div>`;
-  return `<div class="tile${theme ? ' theme' : ''}" data-card="${esc(card.name)}" ${attrs} title="${esc(card.name)}">
+  return `<div class="tile${theme ? ' theme' : ''}${combo ? ' combo-piece' : ''}" data-card="${esc(card.name)}" ${attrs} title="${esc(card.name)}">
     ${img}
     ${count != null ? `<span class="count-badge">${count}</span>` : ''}
     ${badge ? `<span class="badge ${badgeClass}">${badge}</span>` : ''}

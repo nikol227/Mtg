@@ -253,3 +253,26 @@ textarea.export { width: 100%; min-height: 320px; font: 13px/1.4 ui-monospace, S
   .card-detail img { max-width: 280px; margin: 0 auto; display: block; }
   .tabs a { padding: 6px 8px; }
 }
+
+/* ---------- commander features ---------- */
+.tag { display: inline-block; font-size: .72rem; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); white-space: nowrap; }
+.tag.ok { color: var(--ok); border-color: currentColor; background: transparent; }
+.tag.combo { color: var(--accent); border-color: currentColor; background: transparent; }
+.tile.combo-piece { box-shadow: 0 0 0 2px var(--accent), var(--shadow); }
+.plan-step { padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.plan-step:last-of-type { border-bottom: 0; }
+.plan-step p { font-size: .92rem; margin-bottom: 8px; }
+.thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.thumbs img { width: 52px; border-radius: 3px; cursor: pointer; }
+.combo { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.combo-cards { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.combo-cards img { width: 60px; border-radius: 3px; cursor: pointer; }
+.combo-cards img.missing { opacity: .45; outline: 2px dashed var(--warn); outline-offset: 1px; }
+.combo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0 20px; }
+.swap { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.swap img { width: 56px; border-radius: 3px; }
+.swap .arrow { color: var(--muted); }
+textarea.paste { width: 100%; min-height: 160px; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+.cmd-pick .d .tag { margin-left: 4px; }
+.cmd-pick > span { display: flex; flex-direction: column; gap: 3px; }
+.cmd-pick .d { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }

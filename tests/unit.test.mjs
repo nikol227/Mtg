@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import { parseCSV, csvToImportRows, mergeRows } from '../js/csv.js';
 import { slimCard, castRequirements, canCastWith, cardRoles, commanderThemes } from '../js/cards.js';
 import {
-  buildDeck, suggestColors, suggestThemes, suggestCommanders, validateDeck, deckSize, deckStats, exportText, info,
+  buildDeck, validateDeck, deckSize, deckStats, exportText, info, gamePlan, explain, suggestUpgrades, findDeckCombos, makeContext,
 } from '../js/builder.js';
+import { textToImportRows, looksLikeCSV } from '../js/csv.js';
+import { matchCombos, coverage } from '../js/data.js';
+import { nameKey, colorMask } from '../js/cards.js';
 import { fetchCollection } from '../js/scryfall.js';
 import { bulkPile } from './fixtures.mjs';
 
@@ -64,85 +67,115 @@ test('commander themes include tribes named in text', () => {
 function makePool(copies = 4) {
   return bulkPile().map((c) => slimCard(c)).map((card) => ({ name: card.name, card, available: copies }));
 }
+const find = (pool, n) => pool.find((e) => e.name === n)?.card;
 
-test('60-card build hits size, colours, copy limits and land count', () => {
+/** A fake EDHREC page: some cards strongly recommended for the commander. */
+function fakeEdh(entries) {
+  return { numDecks: 5000, slug: 'elf-queen', cards: new Map(entries.map(([n, incl, syn]) => [nameKey(n), { name: n, incl, syn, list: 'Creatures' }])), themes: [] };
+}
+
+/** A combo index shaped like data.combos(). */
+function fakeCombos(defs) {
+  const list = defs.map(([id, cards, produces, identity, minBracket, requires = []]) => ({
+    id, cards, keys: cards.map(nameKey), produces, identity, mask: colorMask(identity.split('')), popularity: 1000, minBracket, mustBeCommander: [], requires, mv: 4,
+  }));
+  const byCard = new Map();
+  list.forEach((c, i) => c.keys.forEach((k) => { if (!byCard.has(k)) byCard.set(k, []); byCard.get(k).push(i); }));
+  return { list, byCard };
+}
+
+test('pasted lists parse quantities, sets and sections', () => {
+  const { rows } = textToImportRows('Commander\n1 Elf Queen\n\nDeck\n1x Sol Ring (C21) 263\n4 Llanowar Elves\nCommand Tower\n// comment\nSideboard\n1 Opt');
+  assert.deepEqual(rows.map((r) => [r.label, r.qty, r.section]), [['Elf Queen', 1, 'commander'], ['Sol Ring', 1, 'main'], ['Llanowar Elves', 4, 'main'], ['Command Tower', 1, 'main'], ['Opt', 1, 'side']]);
+  assert.deepEqual(rows[1].identifier, { set: 'c21', collector_number: '263' });
+  assert.ok(looksLikeCSV(MANABOX));
+  assert.ok(!looksLikeCSV('1 Sol Ring\n2 Opt'));
+});
+
+test('combo matching finds complete and one-away combos within colors and bracket', () => {
+  const idx = fakeCombos([
+    [1, ['A', 'B'], ['Infinite mana'], 'G', 2],
+    [2, ['A', 'C'], ['Infinite damage'], 'R', 2],
+    [3, ['A', 'B', 'D'], ['Win'], 'G', 4],
+  ]);
+  const have = new Set(['a', 'b']);
+  const r = matchCombos(idx, have, { mask: colorMask(['G']), bracket: 5 });
+  assert.deepEqual(r.complete.map((c) => c.id), [1]);
+  assert.deepEqual(r.oneAway.map((x) => [x.combo.id, x.missingName]), [[3, 'D']]);
+  assert.equal(matchCombos(idx, have, { mask: colorMask(['G']), bracket: 3 }).oneAway.length, 0);
+});
+
+test('coverage measures how much of a commander deck you own', () => {
+  const cmd = { key: 'x', cards: [{ key: 'a', incl: 0.9 }, { key: 'b', incl: 0.1 }, { key: 'forest', incl: 1 }] };
+  const cov = coverage(cmd, new Map([['a', 1]]));
+  assert.equal(cov.owned, 1);
+  assert.equal(cov.considered, 2);
+  assert.ok(cov.pct > 0.7 && cov.pct < 0.8);
+});
+
+test('commander build is singleton, 100 cards, in identity, and follows EDHREC', () => {
   const pool = makePool();
-  const res = buildDeck({ pool, format: 'casual', colors: ['G', 'W'] });
-  const deck = { format: 'casual', cards: res.cards, colors: ['G', 'W'] };
-  const lookup = (n) => pool.find((e) => e.name === n)?.card;
-  assert.equal(deckSize(deck), 60);
-  const stats = deckStats(deck, lookup);
-  assert.equal(stats.lands, 24);
-  for (const [name, count] of Object.entries(res.cards)) {
-    const card = lookup(name);
-    assert.ok(count <= 4 || info(card).basic, `${name} x${count}`);
-    if (!info(card).land) assert.ok(canCastWith(card, new Set(['G', 'W'])), `${name} off-colour`);
-  }
-  assert.ok(res.cards['Selesnya Guildgate'] > 0, 'uses on-colour dual land');
-  assert.ok(!res.cards['Test Token'], 'tokens excluded');
-  assert.ok(stats.roles.removal >= 4);
-  const errors = validateDeck(deck, lookup, () => 4).filter((i) => i.level === 'error');
-  assert.deepEqual(errors, []);
+  const cmd = find(pool, 'Elf Queen');
+  const edh = fakeEdh([['Elf Lord', 0.8, 0.5], ['W Creature 6-2', 0.6, 0.3]]);
+  const res = buildDeck({ pool, commander: cmd, edh, bracket: 3 });
+  const deck = { cards: res.cards, commander: res.commander, bracket: 3 };
+  const lookup = (n) => find(pool, n);
+  assert.equal(deckSize(deck), 100);
+  assert.deepEqual(validateDeck(deck, lookup, () => 4).filter((i) => i.level === 'error'), []);
+  assert.ok(res.cards['Elf Lord'] && res.cards['W Creature 6-2'], 'EDHREC picks included even when expensive');
+  assert.ok(!Object.keys(res.cards).some((n) => /^[UBR] /.test(n)), 'no off-identity cards');
+  assert.equal(res.reasons['Elf Lord'].incl, 0.8);
+  assert.match(explain('Elf Lord', res.reasons['Elf Lord'], { commanderName: 'Elf Queen', numDecks: 5000 }), /Played in 80% of 5,000 Elf Queen decks.*synergy \+50%/);
+});
+
+test('bracket limits Game Changers and combos', () => {
+  const pool = makePool();
+  pool.find((e) => e.name === 'G Ramp').card.game_changer = true;
+  const cmd = find(pool, 'Elf Queen');
+  const idx = fakeCombos([[7, ['G Creature 2-0', 'W Creature 2-0'], ['Infinite tokens'], 'GW', 3]]);
+  const b2 = buildDeck({ pool, commander: cmd, bracket: 2, comboIndex: idx });
+  assert.ok(!b2.cards['G Ramp'], 'no Game Changers in bracket 2');
+  const b4 = buildDeck({ pool, commander: cmd, bracket: 4, comboIndex: idx });
+  assert.ok(b4.cards['G Ramp'], 'Game Changers allowed in bracket 4');
+  assert.deepEqual(b4.combos, [7]);
+  assert.ok(b4.cards['G Creature 2-0'] && b4.cards['W Creature 2-0']);
+  pool.find((e) => e.name === 'G Ramp').card.game_changer = false;
+});
+
+test('locked cards are kept when auto-filling', () => {
+  const pool = makePool();
+  const res = buildDeck({ pool, commander: find(pool, 'Elf Queen'), locked: { 'G Creature 6-0': 1 } });
+  assert.equal(res.cards['G Creature 6-0'], 1);
+  assert.equal(deckSize({ cards: res.cards, commander: res.commander }), 100);
 });
 
 test('builder respects availability (physical copies)', () => {
-  const pool = makePool(1);
-  const res = buildDeck({ pool, format: 'casual', colors: ['R'] });
-  for (const [name, count] of Object.entries(res.cards)) if (name !== 'Mountain') assert.equal(count, 1, name);
-  assert.equal(deckSize({ cards: res.cards }), 60);
+  const pool = makePool(0);
+  for (const e of pool) if (e.name.startsWith('G ')) e.available = 1;
+  const res = buildDeck({ pool, commander: find(pool, 'Elf Queen') });
+  assert.ok(!Object.keys(res.cards).some((n) => n.startsWith('W ')), 'cards with 0 free copies are not used');
 });
 
-test('theme pulls in matching cards', () => {
+test('game plan and upgrades', () => {
   const pool = makePool();
-  const plain = buildDeck({ pool, format: 'limited', colors: ['G'] });
-  const elves = buildDeck({ pool, format: 'limited', colors: ['G'], theme: 'tribe:Elf' });
-  const count = (cards) => Object.entries(cards).filter(([n]) => /Elf|Creature \d-[13]$/.test(n)).reduce((a, [, c]) => a + c, 0);
-  assert.ok(count(elves.cards) >= count(plain.cards));
-  assert.equal(deckSize({ cards: elves.cards }), 40);
-});
-
-test('commander build is singleton, 100 cards, within identity', () => {
-  const pool = makePool();
-  const cmd = pool.find((e) => e.name === 'Elf Queen').card;
-  const res = buildDeck({ pool, format: 'commander', commander: cmd });
-  const deck = { format: 'commander', cards: res.cards, commander: res.commander };
-  const lookup = (n) => pool.find((e) => e.name === n)?.card;
-  assert.equal(deckSize(deck), 100);
-  const errors = validateDeck(deck, lookup, () => 4).filter((i) => i.level === 'error');
-  assert.deepEqual(errors, []);
-  assert.ok(res.cards['Elf Lord'], 'synergy card included');
-});
-
-test('locked cards are kept when filling', () => {
-  const pool = makePool();
-  const res = buildDeck({ pool, format: 'casual', colors: ['B'], locked: { 'B Creature 6-0': 4 } });
-  assert.equal(res.cards['B Creature 6-0'], 4);
-  assert.equal(deckSize({ cards: res.cards }), 60);
-});
-
-test('pauper excludes non-commons', () => {
-  const pool = makePool();
-  const res = buildDeck({ pool, format: 'pauper', colors: ['G'] });
-  assert.ok(!res.cards['Elf Lord']);
-});
-
-test('suggestions rank colours, themes and commanders', () => {
-  const pool = makePool();
-  const colors = suggestColors(pool, 'casual');
-  assert.equal(colors.length, 15);
-  assert.ok(colors[0].colors.length >= 1 && colors[0].strength > 0);
-  const themes = suggestThemes(pool, 'casual', ['G']);
-  assert.ok(themes.some((t) => t.key === 'tribe:Elf'));
-  const cmds = suggestCommanders(pool);
-  assert.deepEqual(cmds.map((c) => c.name).sort(), ['Elf Queen', 'Ghave Tester']);
+  const cmd = find(pool, 'Elf Queen');
+  const edh = fakeEdh([['Elf Lord', 0.8, 0.5]]);
+  const res = buildDeck({ pool, commander: cmd, edh });
+  const lookup = (n) => find(pool, n);
+  const plan = gamePlan({ cards: res.cards, commander: res.commander, reasons: res.reasons }, lookup, { edh });
+  assert.deepEqual(plan.map((p) => p.title).slice(0, 3), ['The idea', 'Early turns', 'Build your engine']);
+  assert.ok(plan.find((p) => p.title === 'Build your engine').cards.includes('Elf Lord'));
+  const up = suggestUpgrades({ deckCards: { 'G Creature 1-0': 1, Forest: 30 }, commander: cmd, pool, edh, lookupDeck: lookup });
+  assert.deepEqual(up.swaps.map((s) => [s.out.name, s.in.entry.name]), [['G Creature 1-0', 'Elf Lord']]);
 });
 
 test('export text uses set and collector number', () => {
   const pool = makePool();
-  const lookup = (n) => pool.find((e) => e.name === n)?.card;
-  const txt = exportText({ cards: { 'Mind Stone': 2, Forest: 3 }, commander: 'Elf Queen' }, lookup);
-  assert.match(txt, /^Commander\n1 Elf Queen \(TST\) \d+\n\nDeck\n2 Mind Stone \(TST\) \d+\n3 Forest/);
+  const lookup = (n) => find(pool, n);
+  const txt = exportText({ cards: { 'Mind Stone': 1, Forest: 3 }, commander: 'Elf Queen' }, lookup);
+  assert.match(txt, /^Commander\n1 Elf Queen \(TST\) \d+\n\nDeck\n1 Mind Stone \(TST\) \d+\n3 Forest/);
 });
+
 
 test('fetchCollection batches by 75 and retries 429', async () => {
   let calls = 0;

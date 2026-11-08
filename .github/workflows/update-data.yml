@@ -1,0 +1,37 @@
+name: Update combo & commander data
+
+# Refreshes data/*.json from Commander Spellbook, EDHREC and Scryfall once a week.
+on:
+  schedule:
+    - cron: '23 7 * * 1' # Mondays 07:23 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download data
+        run: node scripts/update-data.mjs --commanders 1000
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- data; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git commit -m "Update combo and commander data"
+          git push

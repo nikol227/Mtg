@@ -17,7 +17,7 @@ export function render(root) {
   root.innerHTML = `
     ${totals.total ? '' : `<div class="empty">
       <h1>Turn your bulk into decks</h1>
-      <p class="muted">Scan your cards with ManaBox, export a CSV, and drop it below. The builder suggests colors, themes and commanders your pile can support.</p>
+      <p class="muted">Scan your cards with ManaBox, export a CSV, and drop it below (or paste a list). Then pick a commander: we rank 1,000 popular commanders by how much of their deck you already own.</p>
     </div>`}
     <section class="panel" id="import-panel">${importPanel(totals)}</section>
     ${totals.total ? `<section class="panel" id="browser"></section>` : ''}
@@ -43,6 +43,11 @@ function importPanel(totals) {
         <strong>${v.importing ? 'Importing…' : 'Drop a ManaBox CSV here, or click to choose a file'}</strong>
         <span class="muted small">Other scanner exports (Delver Lens, TCGplayer, Moxfield, Deckbox…) usually work too.</span>
       </label>
+      <details ${v.pasteOpen ? 'open' : ''} id="paste-box">
+        <summary class="small">Or paste a card list</summary>
+        <textarea class="paste" id="paste-text" placeholder="1 Sol Ring&#10;4 Llanowar Elves&#10;Command Tower" style="margin-top:8px">${esc(v.pasteText || '')}</textarea>
+        <button class="btn small" id="paste-go" style="margin-top:6px">Import list</button>
+      </details>
       <div class="row">
         <label class="row small"><input type="radio" name="imode" value="add" ${v.importMode === 'add' ? 'checked' : ''}> Add to my collection</label>
         <label class="row small"><input type="radio" name="imode" value="replace" ${v.importMode === 'replace' ? 'checked' : ''}> Replace my collection (decks are kept)</label>
@@ -72,7 +77,7 @@ function resultHTML(r) {
     <b>Imported ${r.imported.toLocaleString()} cards</b> (${r.unique.toLocaleString()} printings) from a ${esc(r.format)} file.
     ${r.notFound.length ? `<details><summary>${r.notFound.length} row${r.notFound.length > 1 ? 's' : ''} not found on Scryfall</summary><ul>${r.notFound.slice(0, 200).map((x) => `<li>Line ${x.line}: ${esc(x.label)} ×${x.qty}</li>`).join('')}</ul></details>` : ''}
     ${r.errors.length ? `<details><summary>${r.errors.length} row${r.errors.length > 1 ? 's' : ''} skipped</summary><ul>${r.errors.slice(0, 200).map((x) => `<li>Line ${x.line}: ${esc(x.message)}</li>`).join('')}</ul></details>` : ''}
-    ${r.imported ? '<div style="margin-top:6px"><a class="btn small primary" href="#/build">Build a deck →</a></div>' : ''}
+    ${r.imported ? '<div class="row" style="margin-top:6px"><a class="btn small primary" href="#/build">Find a commander →</a><a class="btn small" href="#/combos">See your combos →</a></div>' : ''}
   </div>`;
 }
 
@@ -88,6 +93,12 @@ function bindImport(root) {
     if (f) runImport(f, root);
   });
   root.querySelectorAll('input[name="imode"]').forEach((r) => r.addEventListener('change', () => { v.importMode = r.value; }));
+  root.querySelector('#paste-box')?.addEventListener('toggle', (e) => { v.pasteOpen = e.target.open; });
+  root.querySelector('#paste-text')?.addEventListener('input', (e) => { v.pasteText = e.target.value; });
+  root.querySelector('#paste-go')?.addEventListener('click', () => {
+    if (!v.pasteText?.trim()) return;
+    runImport(new File([v.pasteText], 'pasted.txt', { type: 'text/plain' }), root).then(() => { if (!v.result?.error) v.pasteText = ''; });
+  });
   root.querySelector('#cancel-import')?.addEventListener('click', () => v.abort?.abort());
   root.querySelector('#clear-coll')?.addEventListener('click', async () => {
     if (!confirm('Remove every card from your collection? Your decks are kept, but they will show as missing cards.')) return;

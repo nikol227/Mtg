@@ -3,8 +3,8 @@
 // and copies used by one deck are unavailable to every other deck.
 
 import * as db from './db.js';
-import { slimCard, isBasic } from './cards.js';
-import { csvToImportRows, mergeRows } from './csv.js';
+import { slimCard, isBasic, nameKey } from './cards.js';
+import { csvToImportRows, mergeRows, textToImportRows, looksLikeCSV } from './csv.js';
 import { fetchCollection } from './scryfall.js';
 import { BASIC_CARDS } from './builder.js';
 
@@ -13,6 +13,7 @@ export const state = {
   collection: new Map(), // scryfall id -> { id, qty, foilQty }
   decks: new Map(), // deck id -> deck
   byName: new Map(), // name -> { name, card, owned, ids }
+  allByKey: new Map(), // nameKey -> card, for every cached card (owned or not)
   version: 0, // bumps on every change (used to cache suggestions)
 };
 
@@ -40,10 +41,48 @@ function reindex() {
     if (!e.card.img && card.img) e.card = card;
   }
   state.byName = byName;
+  const all = new Map();
+  for (const c of state.cards.values()) {
+    const k = nameKey(c.name);
+    const prev = all.get(k);
+    if (!prev || (!prev.img && c.img)) all.set(k, c);
+  }
+  for (const e of byName.values()) all.set(nameKey(e.name), e.card);
+  state.allByKey = all;
 }
 
 export function lookup(name) {
-  return state.byName.get(name)?.card || BASIC_CARDS[name] || null;
+  return state.byName.get(name)?.card || BASIC_CARDS[name] || state.allByKey.get(nameKey(name)) || null;
+}
+
+/** Free copies by nameKey (owned minus used in decks), for matching against EDHREC/Spellbook names. */
+export function freeByKey(excludeDeckId = null) {
+  const used = usage(excludeDeckId);
+  const out = new Map();
+  for (const e of state.byName.values()) {
+    const k = nameKey(e.name);
+    out.set(k, (out.get(k) || 0) + (isBasic(e.card) ? 999 : e.owned - (used.get(e.name) || 0)));
+  }
+  return out;
+}
+
+/**
+ * Make sure we have Scryfall data for these card names (e.g. a commander you don't own,
+ * or cards in a pasted decklist). Fetches missing ones and caches them. Returns name -> card|null.
+ */
+const notOnScryfall = new Set(); // names Scryfall didn't recognise, so we don't ask again
+
+export async function ensureCards(names, { onProgress } = {}) {
+  const missing = [...new Set(names)].filter((n) => !lookup(n) && !notOnScryfall.has(n));
+  if (missing.length) {
+    const { cards } = await fetchCollection(missing.map((name) => ({ name })), { onProgress });
+    const slim = cards.map(slimCard).filter((c) => !state.cards.has(c.id));
+    for (const c of slim) state.cards.set(c.id, c);
+    await db.putMany('cards', slim);
+    reindex();
+    for (const n of missing) if (!lookup(n)) notOnScryfall.add(n);
+  }
+  return new Map(names.map((n) => [n, lookup(n)]));
 }
 
 /** Copies of each card name used across decks (optionally excluding one deck). */
@@ -51,8 +90,13 @@ export function usage(excludeDeckId = null) {
   const used = new Map();
   for (const d of state.decks.values()) {
     if (d.id === excludeDeckId) continue;
-    for (const [n, c] of Object.entries(d.cards)) used.set(n, (used.get(n) || 0) + c);
-    if (d.commander) used.set(d.commander, (used.get(d.commander) || 0) + 1);
+    // Cards marked "external" belong to a deck you already own (upgrade tool), not to your bulk.
+    const ext = d.external || {};
+    for (const [n, c] of Object.entries(d.cards)) {
+      const fromBulk = c - (ext[n] || 0);
+      if (fromBulk > 0) used.set(n, (used.get(n) || 0) + fromBulk);
+    }
+    if (d.commander && !ext[d.commander]) used.set(d.commander, (used.get(d.commander) || 0) + 1);
   }
   return used;
 }
@@ -110,7 +154,7 @@ function matcher(cards) {
  * onProgress({ phase, done, total }) ; returns a summary.
  */
 export async function importCSV(text, { mode = 'add', onProgress, signal } = {}) {
-  const parsed = csvToImportRows(text);
+  const parsed = looksLikeCSV(text) ? csvToImportRows(text) : textToImportRows(text);
   const rows = mergeRows(parsed.rows);
   if (!rows.length) return { format: parsed.format, imported: 0, unique: 0, notFound: [], errors: parsed.errors };
 

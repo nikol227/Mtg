@@ -4,6 +4,8 @@ import * as collectionView from './views/collection.js';
 import * as buildView from './views/build.js';
 import * as decksView from './views/decks.js';
 import * as editorView from './views/editor.js';
+import * as combosView from './views/combos.js';
+import * as upgradeView from './views/upgrade.js';
 
 const root = document.getElementById('view');
 
@@ -25,6 +27,8 @@ function render({ fromRoute = false } = {}) {
     case 'build': return buildView.render(root);
     case 'decks': return decksView.render(root);
     case 'deck': return editorView.render(root, decodeURIComponent(r.arg || ''));
+    case 'combos': return combosView.render(root);
+    case 'upgrade': return upgradeView.render(root);
     default: return collectionView.render(root);
   }
 }

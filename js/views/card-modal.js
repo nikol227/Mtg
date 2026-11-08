@@ -1,11 +1,15 @@
-import { state, lookup, usage, adjustOwned } from '../store.js';
+import { state, lookup, usage, adjustOwned, ensureCards } from '../store.js';
 import { esc, manaHTML, openModal } from '../ui.js';
 import { info } from '../builder.js';
 
 /** Show one card: image (flip for double-faced), text, ownership and which decks use it. */
-export function showCard(name, { deck = null, onDeckChange = null } = {}) {
+export function showCard(name, { deck = null, onDeckChange = null, why = null } = {}) {
   const card = lookup(name);
-  if (!card) return;
+  if (!card) {
+    // A card you don't own (e.g. a combo piece): fetch its data once, then show it.
+    ensureCards([name]).then((m) => { if (m.get(name)) showCard(name, { deck, onDeckChange, why }); }).catch(() => {});
+    return;
+  }
   const render = () => {
     const owned = state.byName.get(name)?.owned || 0;
     const usedBy = [...state.decks.values()].filter((d) => d.cards[name] || d.commander === name);
@@ -21,6 +25,7 @@ export function showCard(name, { deck = null, onDeckChange = null } = {}) {
         <div class="stack">
           <div class="row spread"><h2 style="margin:0">${esc(card.name)}</h2><button class="btn ghost small" data-close>Close</button></div>
           <div>${manaHTML(card.mana_cost)} <span class="muted">${esc(card.type_line)}</span></div>
+          ${why && deck && (deck.cards[name] || deck.commander === name) ? `<div class="notice"><b>Why it's here:</b> ${esc(why)}</div>` : ''}
           ${card.oracle_text ? `<div class="oracle">${esc(card.oracle_text)}</div>` : ''}
           <div class="small muted">${esc(card.set_name || '')} ${card.set ? `(${esc(card.set.toUpperCase())} #${esc(card.cn)})` : ''} · ${esc(card.rarity || '')}${card.price ? ` · $${esc(card.price)}` : ''}</div>
           ${basic ? '<p class="small muted">Basic lands are treated as unlimited.</p>' : `
@@ -39,7 +44,7 @@ export function showCard(name, { deck = null, onDeckChange = null } = {}) {
           <div class="row">
             <span class="small"><b>In this deck: ${inDeck}</b></span>
             <button class="btn small" id="cd-deck-minus" ${inDeck <= 0 ? 'disabled' : ''}>Remove one</button>
-            <button class="btn small primary" id="cd-deck-plus">Add one</button>
+            ${inDeck && !info(card).anyNumber ? '' : '<button class="btn small primary" id="cd-deck-plus">Add one</button>'}
           </div>` : ''}
           <a class="small" href="https://scryfall.com/search?q=${encodeURIComponent(`!"${card.name}"`)}" target="_blank" rel="noopener">View on Scryfall ↗</a>
         </div>
