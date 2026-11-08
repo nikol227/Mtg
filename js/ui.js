@@ -38,7 +38,13 @@ export function cardImageURL(name, version = 'small') {
  * Compact decklist row: small thumbnail (hover to enlarge), card name, mana cost, type,
  * role chips, a badge and action buttons.
  */
-export function thumbRowHTML(card, { count = 1, badge = '', badgeClass = '', actions = '', chips = '', combo = false } = {}) {
+/** "$0.42" from a Scryfall price string; '' for basics or unknown prices. */
+export function priceText(card) {
+  const p = Number(card?.price);
+  return p ? `$${p.toFixed(2)}` : '';
+}
+
+export function thumbRowHTML(card, { count = 1, badge = '', badgeClass = '', actions = '', chips = '', combo = false, price = '' } = {}) {
   const img = card.img_small || card.img;
   return `<div class="thumb-row${combo ? ' combo-piece' : ''}" data-card="${esc(card.name)}">
     ${img ? `<img class="thumb-img" src="${esc(img)}" alt="" loading="lazy" data-preview="${esc(card.img || img)}">` : '<span class="thumb-img thumb-ph"></span>'}
@@ -46,6 +52,7 @@ export function thumbRowHTML(card, { count = 1, badge = '', badgeClass = '', act
       <div class="tr-name">${count > 1 ? `<b>${count}×</b> ` : ''}<a href="javascript:void 0">${esc(card.name)}</a> ${badge ? `<span class="tr-badge ${badgeClass}">${badge}</span>` : ''}</div>
       <div class="tr-sub">${manaHTML(card.mana_cost)} <span class="muted">${esc(card.type_line || '')}</span> ${chips}</div>
     </div>
+    ${price ? `<span class="tr-price" title="Price per card (Scryfall)">${price}</span>` : ''}
     ${actions ? `<div class="tr-actions">${actions}</div>` : ''}
   </div>`;
 }

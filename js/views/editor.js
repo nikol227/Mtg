@@ -8,7 +8,7 @@ import { BRACKETS, edhrecUrl } from '../edhrec.js';
 import { comboUrl } from '../data.js';
 import { loadContext, buildFor } from '../engine.js';
 import { COLORS, BASIC_FOR_COLOR, primaryType, nameKey } from '../cards.js';
-import { esc, manaHTML, pipsHTML, tileHTML, thumbRowHTML, toast, openModal, closeModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
+import { esc, manaHTML, pipsHTML, tileHTML, thumbRowHTML, priceText, toast, openModal, closeModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
 import { showCard } from './card-modal.js';
 import { findSynergies, deckCautions, planSummary } from '../synergy.js';
 import { library, shuffle, handStats, verdict, landOdds } from '../hand.js';
@@ -243,7 +243,7 @@ function renderMain(root, deck, ctx) {
   const badgeFor = (name, count) => {
     const card = lookup(name);
     if (!card || info(card).basic) return {};
-    if (deck.toBuy?.[name]) return { badge: `Buy${card.price ? ` $${card.price}` : ''}`, badgeClass: 'buy' };
+    if (deck.toBuy?.[name]) return { badge: 'Buy', badgeClass: 'buy' };
     const free = ctx.avail(name) + (deck.external?.[name] || 0);
     if (count > free) return { badge: free <= 0 ? 'Not owned' : `${free} free`, badgeClass: 'short' };
     const r = ctx.reason(name);
@@ -262,7 +262,7 @@ function renderMain(root, deck, ctx) {
     return `<tr><td class="num" style="width:30px">${x.count}</td>
       <td><a href="javascript:void 0" data-card="${esc(x.name)}">${esc(x.name)}</a> ${chips(tagsFor(x))}${b.badgeClass === 'short' ? ` <span class="issue-warn small">${esc(b.badge)}</span>` : ''}${b.badgeClass === 'buy' ? ` <span class="tag buy">${esc(b.badge)}</span>` : ''}
         <div class="small muted">${esc(ctx.explain(x.name))}</div></td>
-      <td style="width:90px">${manaHTML(x.card.mana_cost)}</td><td style="width:72px;white-space:nowrap">${actions(x.name)}</td></tr>`;
+      <td style="width:90px">${manaHTML(x.card.mana_cost)}</td><td class="num price-cell">${priceText(x.card)}</td><td style="width:72px;white-space:nowrap">${actions(x.name)}</td></tr>`;
   };
   const section = (title, items) => {
     if (!items.length) return '';
@@ -270,7 +270,7 @@ function renderMain(root, deck, ctx) {
     let out = `<div class="section-head"><h3>${title}</h3><span class="muted small">${n}</span></div>`;
     if (v.mode === 'grid') {
       out += `<div class="thumb-list">${items.map((x) => thumbRowHTML(x.card, {
-        count: x.count, actions: actions(x.name), combo: comboKeys.has(nameKey(x.name)), chips: chips(tagsFor(x)), ...badgeFor(x.name, x.count),
+        count: x.count, actions: actions(x.name), combo: comboKeys.has(nameKey(x.name)), chips: chips(tagsFor(x)), price: priceText(x.card), ...badgeFor(x.name, x.count),
       })).join('')}</div>`;
     } else out += `<table class="list"><tbody>${items.map(row).join('')}</tbody></table>`;
     return out;
@@ -278,7 +278,7 @@ function renderMain(root, deck, ctx) {
   let html = '';
   if (deck.commander) {
     const c = lookup(deck.commander);
-    html += `<div class="section-head"><h3>Commander</h3></div><div class="thumb-list commander-row">${c ? thumbRowHTML(c, badgeFor(deck.commander, 1)) : esc(deck.commander)}</div>`;
+    html += `<div class="section-head"><h3>Commander</h3></div><div class="thumb-list commander-row">${c ? thumbRowHTML(c, { ...badgeFor(deck.commander, 1), price: priceText(c) }) : esc(deck.commander)}</div>`;
   }
   if (v.mode === 'strategy') {
     const byGroup = Object.fromEntries(STRATEGY_GROUPS.map(([k]) => [k, []]));

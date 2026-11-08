@@ -160,6 +160,9 @@ await page.click('[data-side="combos"]');
 await page.waitForSelector('.combo');
 assert.match(await page.textContent('#side'), /In this deck \(1\)[\s\S]*Infinite tokens[\s\S]*One card away \(1\)[\s\S]*Missing Piece/);
 if (shots) await page.screenshot({ path: `${shots}/5-editor-combos.png` });
+// Each card in the decklist shows its price
+const prices = await page.$$eval('#deck-main .tr-price', (els) => els.map((e) => e.textContent));
+assert.ok(prices.length > 50 && prices.every((p) => /^\$\d+\.\d\d$/.test(p)), `card prices shown (${prices.length})`);
 // Hovering a thumbnail shows the large preview
 await page.hover('#deck-main .thumb-row[data-card="Elf Lord"] .thumb-img');
 assert.ok(await page.isVisible('#hover-preview.show'), 'hover preview appears');
@@ -227,6 +230,9 @@ const guideText = await guide.textContent('main');
 for (const s of ['Your game plan', 'Before you play', 'How to play this deck', 'Decklist', 'Shopping list', 'Popular Guy (commander)']) {
   assert.ok(guideText.includes(s), `guide has ${s}`);
 }
+// The printed decklist has no per-card prices (only the shopping list does)
+const printedList = await guide.$$eval('table.list', (ts) => ts.map((t) => t.textContent).join(' '));
+assert.ok(printedList.length > 500 && !/\$\d/.test(printedList), 'no prices in the printed decklist');
 // Printing produces real pages, not a blank sheet
 const pdf = await guide.pdf({ format: 'Letter' });
 const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;

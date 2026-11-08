@@ -367,3 +367,6 @@ textarea.paste { width: 100%; min-height: 160px; font: 13px/1.4 ui-monospace, SF
 .cost-label { color: var(--text-2); }
 .cost-label .buy-cost { color: #1f5fbf; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .cost-label .buy-cost { color: #8fb8ff; } }
+/* per-card prices in the decklist */
+.tr-price { font-size: .78rem; font-variant-numeric: tabular-nums; color: var(--text-2); flex: none; min-width: 44px; text-align: right; }
+.list td.price-cell { width: 56px; font-size: .8rem; color: var(--text-2); }
