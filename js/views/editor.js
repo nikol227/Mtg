@@ -8,7 +8,7 @@ import { BRACKETS, edhrecUrl } from '../edhrec.js';
 import { comboUrl } from '../data.js';
 import { loadContext, buildFor } from '../engine.js';
 import { COLORS, BASIC_FOR_COLOR, primaryType, nameKey } from '../cards.js';
-import { esc, manaHTML, pipsHTML, tileHTML, thumbRowHTML, priceText, toast, openModal, closeModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
+import { esc, manaHTML, pipsHTML, tileHTML, thumbRowHTML, priceText, APP_VERSION, toast, openModal, closeModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
 import { showCard } from './card-modal.js';
 import { findSynergies, deckCautions, planSummary } from '../synergy.js';
 import { library, shuffle, handStats, verdict, landOdds } from '../hand.js';
@@ -470,7 +470,16 @@ export async function renderGuide(id) {
   document.head.appendChild(style);
   document.body.innerHTML = p.body;
   const extra = document.getElementById('guide-extra');
-  extra.innerHTML = '<button id="g-dl" type="button">Download</button> <button id="g-back" type="button">Back to the deck</button>';
+  extra.innerHTML = `<button id="g-dl" type="button">Download</button> <button id="g-back" type="button">Back to the deck</button> <span style="opacity:.7">Version ${APP_VERSION}</span>`;
+  // Print only once every image has loaded, so the printout isn't missing cards.
+  const printBtn = document.querySelector('.toolbar button');
+  printBtn.removeAttribute('onclick');
+  printBtn.onclick = async () => {
+    printBtn.textContent = 'Preparing…';
+    await Promise.all([...document.images].map((img) => (img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r; }))));
+    printBtn.textContent = 'Print / Save as PDF';
+    window.print();
+  };
   document.getElementById('g-dl').onclick = () => download(`${deck.name.replace(/[^\w\- ]+/g, '').trim() || 'deck'} - beginners guide.html`, guideHTML(g), 'text/html');
   document.getElementById('g-back').onclick = () => { location.hash = `#/deck/${encodeURIComponent(deck.id)}`; location.reload(); };
 }

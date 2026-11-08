@@ -3,6 +3,9 @@
 import { COLORS, primaryType } from './cards.js';
 import { info } from './builder.js';
 
+/** Shown in the footer and on the printable guide, to tell which version a browser is running. */
+export const APP_VERSION = '2026.11.08-3';
+
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function manaHTML(cost) {

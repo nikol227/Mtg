@@ -1,5 +1,5 @@
 import { load, subscribe, backupJSON, restoreJSON, collectionTotals, state } from './store.js';
-import { openModal, closeModal, download, toast, esc, installHoverPreview } from './ui.js';
+import { openModal, closeModal, download, toast, esc, installHoverPreview, APP_VERSION } from './ui.js';
 import * as collectionView from './views/collection.js';
 import * as buildView from './views/build.js';
 import * as decksView from './views/decks.js';
@@ -8,6 +8,7 @@ import * as combosView from './views/combos.js';
 import * as upgradeView from './views/upgrade.js';
 
 const root = document.getElementById('view');
+document.getElementById('app-version').textContent = `· Version ${APP_VERSION}`;
 installHoverPreview();
 
 function route() {
