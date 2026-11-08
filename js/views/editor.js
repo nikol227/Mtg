@@ -13,6 +13,7 @@ import { showCard } from './card-modal.js';
 import { findSynergies, deckCautions, planSummary } from '../synergy.js';
 import { library, shuffle, handStats, verdict, landOdds } from '../hand.js';
 import { deckTitle } from '../names.js';
+import { guideHTML, glossaryFor } from '../print.js';
 
 const SECTIONS = ['Creature', 'Planeswalker', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Battle', 'Other', 'Land'];
 const SECTION_LABEL = { Creature: 'Creatures', Planeswalker: 'Planeswalkers', Instant: 'Instants', Sorcery: 'Sorceries', Artifact: 'Artifacts', Enchantment: 'Enchantments', Battle: 'Battles', Other: 'Other', Land: 'Lands' };
@@ -44,6 +45,7 @@ export function render(root, id) {
         <button class="btn small" id="fill" title="Add the best free cards until the deck reaches 100">Auto-fill</button>
         <button class="btn small" id="rebuild" title="Throw this list away and build again">Rebuild</button>
         <button class="btn small primary" id="export">Export</button>
+        <button class="btn small" id="print-guide" title="A printable beginner's guide: game plan, synergies, keywords and annotated decklist">Print guide</button>
         <button class="btn small" id="dup">Duplicate</button>
         <button class="btn small danger" id="del">Delete</button>
       </div>
@@ -195,6 +197,7 @@ function bindHeader(root, deck, ctx) {
     if (await rebuildWith({}, e.target)) toast('Deck rebuilt');
   });
   root.querySelector('#export').addEventListener('click', () => showExport(deck));
+  root.querySelector('#print-guide').addEventListener('click', () => openGuide(deck, ctx));
   root.querySelector('#dup').addEventListener('click', async () => {
     const copy = { ...structuredClone(deck), id: newDeckId(), name: `${deck.name} (copy)`, created: Date.now() };
     await saveDeck(copy);
@@ -222,7 +225,7 @@ function renderIssues(root, deck, ctx) {
   </div>`;
 }
 
-function groups(deck) {
+function groupsByType(deck) {
   const g = Object.fromEntries(SECTIONS.map((s) => [s, []]));
   for (const [name, count] of Object.entries(deck.cards)) {
     const card = lookup(name) || { name, cmc: 0, type_line: '?', front_type: '', mana_cost: '', img: null, oracle_text: '', keywords: [], color_identity: [], produced_mana: [], legalities: {} };
@@ -235,7 +238,7 @@ function groups(deck) {
 
 function renderMain(root, deck, ctx) {
   const el = root.querySelector('#deck-main');
-  const g = groups(deck);
+  const g = groupsByType(deck);
   const comboKeys = new Set((ctx.combos()?.complete || []).flatMap((c) => c.keys));
   const badgeFor = (name, count) => {
     const card = lookup(name);
@@ -437,6 +440,51 @@ function comboHTML(c, { missing = null, ownMissing = false } = {}) {
     ${missing ? `<div class="small">${ownMissing ? '<span class="tag ok">Missing piece is in your collection</span>' : '<span class="tag">Missing piece not owned</span>'}</div>` : ''}
     <div class="small"><a href="${comboUrl(c)}" target="_blank" rel="noopener">How it works (Commander Spellbook) ↗</a> · min. bracket ${c.minBracket}</div>
   </div>`;
+}
+
+/** Open the printable beginner's guide in a new tab (print it or save it as a PDF). */
+function openGuide(deck, ctx) {
+  const win = window.open('', '_blank');
+  if (!win) { toast('Allow pop-ups for this site to open the guide.'); return; }
+  const entries = deckEntries(deck);
+  const groups = findSynergies(entries);
+  const combos = ctx.combos()?.complete || [];
+  const stats = deckStats(deck, lookup);
+  const cmd = lookup(deck.commander);
+  const commanderOwned = (freeByKey(deck.id).get(nameKey(deck.commander)) || 0) > 0 || !!deck.external?.[deck.commander];
+  const comboKeys = new Set(combos.flatMap((c) => c.keys));
+  const reasons = Object.fromEntries(entries.map((x) => [x.name, ctx.reason(x.name) || {}]));
+  const g = groupsByType(deck);
+  const sections = SECTIONS.map((s) => ({
+    title: SECTION_LABEL[s],
+    items: g[s].map((x) => ({
+      name: x.name, count: x.count, card: x.card, buy: !!deck.toBuy?.[x.name],
+      tags: cardTags(x.card, { reason: reasons[x.name], inCombo: comboKeys.has(nameKey(x.name)) }),
+      why: info(x.card).basic ? '' : ctx.explain(x.name),
+    })),
+  }));
+  const toBuy = Object.entries(deck.toBuy || {}).map(([name, count]) => ({ name, count, price: lookup(name)?.price }));
+  if (!commanderOwned && cmd) toBuy.unshift({ name: `${cmd.name} (commander)`, count: 1, price: cmd.price });
+  const html = guideHTML({
+    deck,
+    commander: cmd,
+    bracketLabel: BRACKETS.find((b) => b.n === deck.bracket)?.label || '',
+    summary: planSummary(entries, { combos, reasons, roleOf: (c) => info(c).roles }).text,
+    plan: gamePlan(deck, lookup, { edh: ctx.data?.edh, combosInDeck: combos, themeLabel: deck.themeLabel, bracket: deck.bracket }),
+    groups,
+    cautions: deckCautions(entries, stats, deck.colors),
+    combos,
+    stats,
+    cost: deckCost(deck, lookup, { commanderOwned }),
+    sections,
+    toBuy,
+    glossary: glossaryFor(entries.map((x) => x.card)),
+    landOdds: landOdds(stats.lands, 99),
+    edhUrl: deck.edhSlug ? edhrecUrl(deck.edhSlug, deck.theme) : null,
+  });
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
 }
 
 /** The deck's cards (with the commander) as [{name, card, count}] for the synergy/caution rules. */

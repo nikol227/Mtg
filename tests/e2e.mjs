@@ -219,6 +219,15 @@ await page.waitForSelector('#themes [data-theme]');
 await page.click('#go');
 await page.waitForSelector('#deck-main .thumb-row');
 assert.match(await page.textContent('#issues'), /Popular Guy: not free in your collection \(your commander\)/);
+// Printable beginner's guide opens in a new tab with every section, incl. the shopping list
+const [guide] = await Promise.all([page.waitForEvent('popup'), page.click('#print-guide')]);
+await guide.waitForLoadState();
+const guideText = await guide.textContent('main');
+for (const s of ['Your game plan', 'Before you play', 'How to play this deck', 'Decklist', 'Shopping list', 'Popular Guy (commander)']) {
+  assert.ok(guideText.includes(s), `guide has ${s}`);
+}
+if (shots) await guide.screenshot({ path: `${shots}/5c-guide.png`, fullPage: false });
+await guide.close();
 // Costs: whole-deck value, and what you'd need to buy (cards marked to buy + the unowned commander)
 assert.match(await page.textContent('#cost-label'), /Deck value \$\d+\.\d\d · To buy: \$\d+\.\d\d \(\d+ cards\)/);
 const overlap = await page.evaluate(async () => {

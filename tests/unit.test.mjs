@@ -13,6 +13,7 @@ import { fetchCollection } from '../js/scryfall.js';
 import { findSynergies, deckCautions, planSummary } from '../js/synergy.js';
 import { library, shuffle, handStats, verdict, landOdds } from '../js/hand.js';
 import { deckTitle, commanderParts } from '../js/names.js';
+import { guideHTML, glossaryFor } from '../js/print.js';
 import { bulkPile } from './fixtures.mjs';
 
 const MANABOX = `Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall ID,Purchase price,Misprint,Altered,Condition,Language,Purchase price currency
@@ -351,6 +352,25 @@ test('unique generated deck titles', () => {
   }
   const a = deckTitle({ commander: 'Mabel, Heir to Cragflame', colors: ['R', 'W'], groups, seed: 7 });
   assert.equal(deckTitle({ commander: 'Mabel, Heir to Cragflame', colors: ['R', 'W'], groups, seed: 7 }), a, 'same seed, same title');
+});
+
+test('beginner guide: keyword glossary and document sections', () => {
+  const cards = [
+    slimCard({ name: 'A', type_line: 'Creature', mana_cost: '{1}{R}', keywords: ['Valiant', 'Flying'], oracle_text: 'Valiant — Whenever this creature becomes the target...\nFlying', legalities: {} }),
+    slimCard({ name: 'B', type_line: 'Enchantment — Class', mana_cost: '{W}', oracle_text: 'Create a Food token.', legalities: {} }),
+  ];
+  const terms = glossaryFor(cards).map(([k]) => k);
+  for (const k of ['Valiant', 'Flying', 'Class', 'Food', 'Token']) assert.ok(terms.includes(k), `${k} in glossary`);
+  const html = guideHTML({
+    deck: { name: 'Test Deck', commander: 'A', colors: ['R'], bracket: 2 }, commander: cards[0], bracketLabel: 'Core',
+    summary: 'Develop your board.', plan: [{ title: 'Early turns', text: 'Play lands.' }], groups: [], cautions: ['Watch out.'], combos: [],
+    stats: { total: 100, lands: 36, avgCmc: 2.5 }, cost: { total: 12.5, toBuy: 3, toBuyCount: 1 },
+    sections: [{ title: 'Creatures', items: [{ name: 'A', count: 1, card: cards[0], tags: ['Synergy'], why: 'Because.', buy: true }] }],
+    toBuy: [{ name: 'A', count: 1, price: '3.00' }], glossary: glossaryFor(cards), landOdds: 0.74, edhUrl: null,
+  });
+  for (const s of ['<h1>Test Deck</h1>', 'Your game plan', 'Before you play', '74% of the time', 'How to play this deck', 'Things to watch out for', 'Keywords in this deck', 'Decklist', 'TO BUY', 'Shopping list', 'Print / Save as PDF']) {
+    assert.ok(html.includes(s), `guide includes ${s}`);
+  }
 });
 
 test('export text uses set and collector number', () => {
