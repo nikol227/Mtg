@@ -301,3 +301,19 @@ textarea.paste { width: 100%; min-height: 160px; font: 13px/1.4 ui-monospace, SF
 .settings summary { cursor: pointer; }
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
 .settings-grid label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--text-2); }
+
+/* ---------- role chips ---------- */
+.role { display: inline-block; font-size: .68rem; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 3px; vertical-align: 1px; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
+.role-ramp { color: #2e7d32; border-color: currentColor; }
+.role-draw { color: #1f5fbf; border-color: currentColor; }
+.role-removal, .role-wipe { color: #b3261e; border-color: currentColor; }
+.role-synergy { color: var(--accent); border-color: currentColor; }
+.role-combo { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.role-finisher { color: #7b3fbf; border-color: currentColor; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .role-ramp { color: #81c784; }
+  :root:not([data-theme="light"]) .role-draw { color: #8fb8ff; }
+  :root:not([data-theme="light"]) .role-removal, :root:not([data-theme="light"]) .role-wipe { color: #ff8a80; }
+  :root:not([data-theme="light"]) .role-finisher { color: #c39bff; }
+}
+.tile .tile-actions .btn.icon { font-size: .85rem; }

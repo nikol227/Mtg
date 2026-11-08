@@ -26,7 +26,7 @@ export async function commanderPage(nameOrSlug, { theme = null, bracket = null, 
   const base = slug || (nameOrSlug.includes(' ') || /[A-Z,']/.test(nameOrSlug) ? edhrecSlug(nameOrSlug) : nameOrSlug);
   const variant = theme || (bracket ? BRACKETS.find((b) => b.n === bracket)?.slug : null);
   const path = variant ? `${base}/${variant}` : base;
-  const cacheKey = `edhrec:${path}`;
+  const cacheKey = `edhrec2:${path}`; // v2 adds the average deck profile
   let raw = null;
   try {
     const hit = await db.getMeta(cacheKey);
@@ -64,6 +64,11 @@ function compact(page) {
     img: card.image_uris?.[0]?.normal || null,
     themes: (page.panels?.taglinks || []).map((t) => [t.slug, t.value, t.count]),
     similar: page.similar || [],
+    // EDHREC's average deck for this page: card-type counts and mana curve of non-land cards.
+    avg: {
+      types: Object.fromEntries(['creature', 'instant', 'sorcery', 'artifact', 'enchantment', 'planeswalker', 'battle', 'land', 'basic', 'nonbasic'].map((k) => [k, Number(page[k]) || 0])),
+      curve: page.panels?.mana_curve || null,
+    },
     cards,
   };
 }
@@ -85,6 +90,7 @@ function expand(raw, slug, variant) {
     img: raw.img,
     themes: raw.themes.map(([s, label, count]) => ({ slug: s, label, count })),
     similar: raw.similar,
+    avg: raw.avg || null,
     cards,
   };
 }

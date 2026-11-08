@@ -197,7 +197,7 @@ function renderBracket(root) {
           </select>
         </label>
         <label>Number of lands
-          <select id="set-lands">${[33, 34, 35, 36, 37, 38].map((n) => `<option ${v.settings.lands === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          <select id="set-lands"><option value="" ${v.settings.lands == null ? 'selected' : ''}>Auto (EDHREC average)</option>${[33, 34, 35, 36, 37, 38].map((n) => `<option value="${n}" ${v.settings.lands === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
         </label>
       </div>
     </details>`;
@@ -215,7 +215,7 @@ function renderBracket(root) {
     renderGo(root);
   });
   el.querySelector('#set-price').addEventListener('change', (e) => { v.settings.maxPrice = e.target.value === '' ? null : Number(e.target.value); renderGo(root); });
-  el.querySelector('#set-lands').addEventListener('change', (e) => { v.settings.lands = Number(e.target.value); });
+  el.querySelector('#set-lands').addEventListener('change', (e) => { v.settings.lands = e.target.value === '' ? null : Number(e.target.value); });
   refreshFit(root);
 }
 

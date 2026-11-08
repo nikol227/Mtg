@@ -22,7 +22,7 @@ export async function loadContext({ commanderName, slug = null, theme = null, br
 
 /** Build a deck for a commander (fetching its card data first if you don't own it). */
 /** Optional build settings (chosen on the Build page, saved on the deck). */
-export const DEFAULT_SETTINGS = { fillWith: 'buy', maxPrice: null, lands: 36 };
+export const DEFAULT_SETTINGS = { fillWith: 'buy', maxPrice: null, lands: null }; // lands: null = EDHREC average
 
 export async function buildFor({ commanderName, slug, theme, themeLabel, bracket, excludeDeckId = null, locked = {}, settings = {} }) {
   const opt = { ...DEFAULT_SETTINGS, ...settings };

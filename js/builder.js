@@ -30,6 +30,41 @@ export const BRACKET_RULES = {
   5: { gameChangers: 99, combos: 3, massLandDenial: true, extraTurns: true },
 };
 
+/**
+ * Targets for a deck, taken from EDHREC's average deck for this commander/strategy/bracket
+ * when available (lands, creature count, mana curve), otherwise the generic FORMAT values.
+ * Ramp is scaled to the curve: low-curve aggro decks need far fewer mana rocks.
+ */
+export function deckProfile(edh, { lands = null } = {}) {
+  const avg = edh?.avg;
+  const t = avg?.types || {};
+  const landCount = lands ?? (t.land >= 30 && t.land <= 42 ? t.land : FORMAT.lands);
+  const nonland = FORMAT.size - 1 - landCount;
+  let curve = FORMAT.curve;
+  let avgMv = 3.1;
+  const raw = avg?.curve;
+  if (raw && Object.keys(raw).length) {
+    const buckets = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    let n = 0; let mv = 0;
+    for (const [k, v] of Object.entries(raw)) {
+      const b = Math.min(6, Math.max(1, Number(k) || 0));
+      buckets[b] += v; n += v; mv += Number(k) * v;
+    }
+    if (n >= 20) {
+      curve = Object.fromEntries(Object.entries(buckets).map(([b, v]) => [b, Math.max(0.02, v / n)]));
+      avgMv = mv / n;
+    }
+  }
+  let creatures = FORMAT.creatures;
+  if (t.creature > 0 && nonland > 0) {
+    const share = t.creature / nonland;
+    creatures = [Math.max(0.1, share - 0.06), Math.min(0.85, share + 0.08)];
+  }
+  const ramp = Math.round(Math.min(12, Math.max(3, 4 + (avgMv - 2.3) * 7)));
+  const roles = { ...FORMAT.roles, ramp };
+  return { lands: landCount, curve, creatures, roles, avgMv, fromEdhrec: !!(avg && (t.land || raw)) };
+}
+
 // ---------- per-card derived info (cached) ----------
 
 const infoCache = new WeakMap();
@@ -151,9 +186,10 @@ function pickCombos(pool, ctx, comboIndex, byKey) {
  * once your own cards run out, and are returned in `toBuy`.
  * Returns { cards, commander, notes, reasons: {name: reason}, combos: [comboId], toBuy: {name: count}, shortfall }
  */
-export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChangers = new Set(), comboIndex = null, locked = {}, theme = null, themeLabel = null, lands = FORMAT.lands }) {
+export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChangers = new Set(), comboIndex = null, locked = {}, theme = null, themeLabel = null, lands = null }) {
   const ctx = makeContext({ commander, edh, bracket, gameChangers, theme, themeLabel });
-  const fmt = { ...FORMAT, lands: Math.max(30, Math.min(42, lands)) };
+  const profile = deckProfile(edh, { lands });
+  const fmt = { ...FORMAT, lands: Math.max(30, Math.min(42, profile.lands)), curve: profile.curve, creatures: profile.creatures, roles: profile.roles };
   const byName = new Map(pool.map((e) => [e.name, e]));
   const byKey = new Map(pool.map((e) => [info(e.card).key, e]));
   const lookup = (n) => byName.get(n)?.card || BASIC_CARDS[n] || null;
@@ -265,10 +301,10 @@ export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChange
     const cost = Object.keys(toBuy).reduce((a, n) => a + (Number(lookup(n)?.price) || 0), 0);
     notes.unshift(`Your collection ran out after ${nonlandTarget - buyCount} non-land cards, so ${buyCount} recommended cards you don't own were added (about $${cost.toFixed(2)} in total). They're marked “Buy”; see the To buy tab.`);
   }
-  if ((tally.roles.ramp || 0) < 6) notes.push('Light on ramp: your bulk had few mana rocks or land-search spells in these colors.');
+  if ((tally.roles.ramp || 0) < Math.ceil(fmt.roles.ramp / 2)) notes.push('Light on ramp: your bulk had few mana rocks or land-search spells in these colors.');
   if ((tally.roles.removal || 0) < 5) notes.push('Light on removal: consider picking up a few cheap removal spells.');
   if (!edh) notes.push('EDHREC data was not available, so cards were chosen with built-in heuristics only.');
-  return { cards, commander: commander ? commander.name : null, notes, reasons, combos: deckCombos.complete.map((c) => c.id), toBuy, shortfall };
+  return { cards, commander: commander ? commander.name : null, notes, reasons, combos: deckCombos.complete.map((c) => c.id), toBuy, shortfall, profile };
 }
 
 function countNonbasic(deck, lookup) {
@@ -448,6 +484,68 @@ export function gamePlan(deck, lookup, { edh = null, combosInDeck = [], themeLab
     cards: [...names(removal, 3), ...names(wipes, 2)],
   });
   return plan;
+}
+
+// ---------- role tags and strategy groups (for the editor) ----------
+
+/** Can this card go in this commander's deck at all (identity, legality, bracket bans)? */
+export function fitsDeck(card, ctx) { return eligible(card, ctx); }
+
+/**
+ * Short role labels for a card in a deck: Ramp, Draw, Removal, Wipe, plus Synergy (EDHREC synergy
+ * ≥ 10%), Combo (part of a combo in the deck) and Finisher.
+ */
+export function cardTags(card, { reason = null, inCombo = false } = {}) {
+  const i = info(card);
+  if (i.land) return i.basic ? [] : ['Land'];
+  const tags = [];
+  if (inCombo) tags.push('Combo');
+  if (i.finisher) tags.push('Finisher');
+  if ((reason?.syn ?? 0) >= 0.1) tags.push('Synergy');
+  if (i.roles.has('ramp')) tags.push('Ramp');
+  if (i.roles.has('draw')) tags.push('Draw');
+  if (i.roles.has('wipe')) tags.push('Wipe');
+  else if (i.roles.has('removal')) tags.push('Removal');
+  return tags;
+}
+
+/** Strategy view sections, in display order; a card goes in the first one it qualifies for. */
+export const STRATEGY_GROUPS = [
+  ['Combo', 'Combo pieces'],
+  ['Finisher', 'Win conditions'],
+  ['Synergy', 'Commander synergy'],
+  ['Ramp', 'Ramp'],
+  ['Draw', 'Card draw'],
+  ['Removal', 'Removal'],
+  ['Wipe', 'Board wipes'],
+  ['Creature', 'Other creatures'],
+  ['Spell', 'Other spells'],
+  ['Land', 'Lands'],
+];
+
+export function strategyGroup(card, tags) {
+  for (const [k] of STRATEGY_GROUPS) if (tags.includes(k)) return k;
+  const i = info(card);
+  if (i.land) return 'Land';
+  return i.creature ? 'Creature' : 'Spell';
+}
+
+/** Owned replacements for a card: same role (or same broad type), ranked for this deck. */
+export function swapOptions(card, pool, deckCards, ctx, limit = 12) {
+  const i = info(card);
+  const roles = [...i.roles];
+  const inDeck = new Set(Object.keys(deckCards).map(nameKey));
+  return pool
+    .filter((e) => !e.buy && e.available > 0 && !inDeck.has(info(e.card).key) && eligible(e.card, ctx))
+    .filter((e) => {
+      const j = info(e.card);
+      if (i.land) return j.land && !j.basic;
+      if (j.land) return false;
+      return roles.length ? roles.some((r) => j.roles.has(r)) : j.creature === i.creature;
+    })
+    .map((e) => ({ entry: e, ...scoreCard(e.card, ctx) }))
+    .sort((a, b) => b.s - a.s)
+    .slice(0, limit);
 }
 
 // ---------- how many usable spells your pile has for a commander ----------

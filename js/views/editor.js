@@ -1,13 +1,14 @@
 import { state, lookup, pool, saveDeck, deleteDeck, newDeckId, availabilityFn, freeByKey, ensureCards } from '../store.js';
 import {
   FORMAT, validateDeck, deckStats, deckSize, exportText, info, makeContext, scoreCard, isGameChanger,
+  cardTags, strategyGroup, STRATEGY_GROUPS, swapOptions,
   reasonFor, explain, gamePlan, findDeckCombos, BRACKET_RULES,
 } from '../builder.js';
 import { BRACKETS, edhrecUrl } from '../edhrec.js';
 import { comboUrl } from '../data.js';
 import { loadContext, buildFor } from '../engine.js';
 import { COLORS, BASIC_FOR_COLOR, primaryType, nameKey } from '../cards.js';
-import { esc, manaHTML, pipsHTML, tileHTML, toast, openModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
+import { esc, manaHTML, pipsHTML, tileHTML, toast, openModal, closeModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
 import { showCard } from './card-modal.js';
 
 const SECTIONS = ['Creature', 'Planeswalker', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Battle', 'Other', 'Land'];
@@ -47,7 +48,7 @@ export function render(root, id) {
       ${deck.themeLabel ? `<span class="muted">· ${esc(deck.themeLabel)}</span>` : ''}
       <label class="muted">· Bracket <select id="bracket" aria-label="Bracket">${BRACKETS.map((b) => `<option value="${b.n}" ${b.n === deck.bracket ? 'selected' : ''}>${b.n}. ${esc(b.label)}</option>`).join('')}</select></label>
       ${deck.edhSlug ? `<a class="small" href="${edhrecUrl(deck.edhSlug, deck.theme)}" target="_blank" rel="noopener">EDHREC ↗</a>` : ''}
-      <span class="chips"><button class="chip" id="view-mode" type="button">${v.mode === 'grid' ? 'List view' : 'Image view'}</button></span>
+      <span class="chips" id="view-mode">${[['grid', 'Images'], ['list', 'List'], ['strategy', 'Strategy']].map(([m, l]) => `<button class="chip" type="button" data-mode="${m}" aria-pressed="${v.mode === m}">${l}</button>`).join('')}</span>
     </div>
     <div id="issues"></div>
     <div class="editor">
@@ -94,7 +95,16 @@ function makeCtx(root, deck) {
       renderMain(root, deck, ctx);
       renderIssues(root, deck, ctx);
       renderSide(root, deck, ctx);
-      root.querySelector('#size-label').textContent = `${deckSize(deck)} / ${FORMAT.size} cards`;
+      const st = deckStats(deck, lookup);
+      root.querySelector('#size-label').textContent = `${deckSize(deck)} / ${FORMAT.size} cards · ${st.lands} lands · avg mana value ${st.avgCmc.toFixed(2)}`;
+    },
+    async swap(out, inName) {
+      delete deck.cards[out];
+      if (deck.toBuy?.[out]) delete deck.toBuy[out];
+      if (deck.reasons) delete deck.reasons[out];
+      deck.cards[inName] = 1;
+      await saveDeck(deck);
+      ctx.refresh();
     },
     async change(name, delta) {
       const card = lookup(name);
@@ -119,7 +129,12 @@ function makeCtx(root, deck) {
 
 function bindHeader(root, deck, ctx) {
   root.querySelector('#deck-name').addEventListener('change', async (e) => { deck.name = e.target.value.trim() || deck.name; await saveDeck(deck); toast('Renamed'); });
-  root.querySelector('#view-mode').addEventListener('click', (e) => { v.mode = v.mode === 'grid' ? 'list' : 'grid'; e.target.textContent = v.mode === 'grid' ? 'List view' : 'Image view'; renderMain(root, deck, ctx); });
+  root.querySelector('#view-mode').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mode]'); if (!b) return;
+    v.mode = b.dataset.mode;
+    root.querySelectorAll('#view-mode [data-mode]').forEach((x) => x.setAttribute('aria-pressed', x.dataset.mode === v.mode));
+    renderMain(root, deck, ctx);
+  });
   root.querySelector('#bracket').addEventListener('change', async (e) => { deck.bracket = Number(e.target.value); await saveDeck(deck); ctx.refresh(); toast('Bracket changed. Use Rebuild to rebuild the deck for it.'); });
   const rebuildWith = async (locked, btn) => {
     const label = btn.textContent;
@@ -209,39 +224,81 @@ function renderMain(root, deck, ctx) {
     if (r?.incl != null) return { badge: `${Math.round(r.incl * 100)}%`, badgeClass: '' };
     return {};
   };
-  const actions = (name) => `<button class="btn icon" data-minus="${esc(name)}" aria-label="Remove ${esc(name)}">−</button>`;
+  const actions = (name) => {
+    const card = lookup(name);
+    const swap = card && !info(card).basic ? `<button class="btn icon" data-swap="${esc(name)}" aria-label="Swap ${esc(name)} for a card you own" title="Swap for a card you own">⇄</button>` : '';
+    return `${swap}<button class="btn icon" data-minus="${esc(name)}" aria-label="Remove ${esc(name)}">−</button>`;
+  };
+  const tagsFor = (x) => cardTags(x.card, { reason: ctx.reason(x.name), inCombo: comboKeys.has(nameKey(x.name)) });
+  const chips = (tags) => tags.map((t) => `<span class="role role-${t.toLowerCase()}">${t}</span>`).join('');
+  const row = (x) => {
+    const b = badgeFor(x.name, x.count);
+    return `<tr><td class="num" style="width:30px">${x.count}</td>
+      <td><a href="javascript:void 0" data-card="${esc(x.name)}">${esc(x.name)}</a> ${chips(tagsFor(x))}${b.badgeClass === 'short' ? ` <span class="issue-warn small">${esc(b.badge)}</span>` : ''}${b.badgeClass === 'buy' ? ` <span class="tag buy">${esc(b.badge)}</span>` : ''}
+        <div class="small muted">${esc(ctx.explain(x.name))}</div></td>
+      <td style="width:90px">${manaHTML(x.card.mana_cost)}</td><td style="width:72px;white-space:nowrap">${actions(x.name)}</td></tr>`;
+  };
+  const section = (title, items) => {
+    if (!items.length) return '';
+    const n = items.reduce((a, x) => a + x.count, 0);
+    let out = `<div class="section-head"><h3>${title}</h3><span class="muted small">${n}</span></div>`;
+    if (v.mode === 'grid') {
+      out += `<div class="grid">${items.map((x) => tileHTML(x.card, {
+        count: x.count > 1 ? x.count : null, actions: actions(x.name), combo: comboKeys.has(nameKey(x.name)), ...badgeFor(x.name, x.count),
+        attrs: `data-tags="${esc(tagsFor(x).join(' · '))}"`,
+      })).join('')}</div>`;
+    } else out += `<table class="list"><tbody>${items.map(row).join('')}</tbody></table>`;
+    return out;
+  };
   let html = '';
   if (deck.commander) {
     const c = lookup(deck.commander);
     html += `<div class="section-head"><h3>Commander</h3></div><div class="grid">${c ? tileHTML(c, badgeFor(deck.commander, 1)) : esc(deck.commander)}</div>`;
   }
-  for (const s of SECTIONS) {
-    const items = g[s];
-    if (!items.length) continue;
-    const n = items.reduce((a, x) => a + x.count, 0);
-    html += `<div class="section-head"><h3>${SECTION_LABEL[s]}</h3><span class="muted small">${n}</span></div>`;
-    if (v.mode === 'grid') {
-      html += `<div class="grid">${items.map((x) => tileHTML(x.card, {
-        count: x.count > 1 ? x.count : null, actions: actions(x.name), combo: comboKeys.has(nameKey(x.name)), ...badgeFor(x.name, x.count),
-      })).join('')}</div>`;
-    } else {
-      html += `<table class="list"><tbody>${items.map((x) => {
-        const b = badgeFor(x.name, x.count);
-        return `<tr><td class="num" style="width:30px">${x.count}</td>
-          <td><a href="javascript:void 0" data-card="${esc(x.name)}">${esc(x.name)}</a>${comboKeys.has(nameKey(x.name)) ? ' <span class="tag combo">combo</span>' : ''}${b.badgeClass === 'short' ? ` <span class="issue-warn small">${esc(b.badge)}</span>` : ''}${b.badgeClass === 'buy' ? ` <span class="tag buy">${esc(b.badge)}</span>` : ''}
-            <div class="small muted">${esc(ctx.explain(x.name))}</div></td>
-          <td style="width:90px">${manaHTML(x.card.mana_cost)}</td><td style="width:40px">${actions(x.name)}</td></tr>`;
-      }).join('')}</tbody></table>`;
-    }
+  if (v.mode === 'strategy') {
+    const byGroup = Object.fromEntries(STRATEGY_GROUPS.map(([k]) => [k, []]));
+    for (const items of Object.values(g)) for (const x of items) byGroup[strategyGroup(x.card, tagsFor(x))].push(x);
+    for (const [k, label] of STRATEGY_GROUPS) html += section(label, byGroup[k]);
+  } else {
+    for (const s of SECTIONS) html += section(SECTION_LABEL[s], g[s]);
   }
   if (!Object.keys(deck.cards).length) html += '<p class="muted">This deck is empty. Use <b>Auto-fill</b> or add cards from the panel.</p>';
-  html += '<p class="small muted" style="margin-top:14px">Percentages show how many EDHREC decks for this commander play the card. Click any card to see why it was picked.</p>';
+  html += '<p class="small muted" style="margin-top:14px">Percentages show how many EDHREC decks for this commander play the card. Click a card to see why it was picked, or ⇄ to swap it for one you own.</p>';
   el.innerHTML = html;
   el.onclick = (e) => {
     const m = e.target.closest('[data-minus]'); if (m) { e.stopPropagation(); ctx.change(m.dataset.minus, -1); return; }
+    const sw = e.target.closest('[data-swap]'); if (sw) { e.stopPropagation(); showSwap(sw.dataset.swap, deck, ctx); return; }
     const c = e.target.closest('[data-card]');
     if (c) showCard(c.dataset.card, { deck, onDeckChange: ctx.change, why: ctx.explain(c.dataset.card) });
   };
+}
+
+/** ⇄ dialog: owned cards that can replace this one (same role or type), best first. */
+function showSwap(name, deck, ctx) {
+  const card = lookup(name);
+  if (!card) return;
+  const opts = swapOptions(card, pool(deck.id), deck.cards, ctx.builderCtx());
+  const tags = cardTags(card, { reason: ctx.reason(name) });
+  const cur = ctx.reason(name);
+  openModal(`
+    <div class="row spread"><h2 style="margin:0">Swap ${esc(name)}</h2><button class="btn ghost small" data-close>Close</button></div>
+    <p class="small muted">${tags.length ? `Role: ${tags.join(', ')}. ` : ''}${cur?.incl != null ? `In ${Math.round(cur.incl * 100)}% of EDHREC decks for ${esc(deck.commander)}. ` : ''}These free cards from your collection fill the same role, best fit first.</p>
+    ${opts.length ? opts.map((o) => {
+      const c = o.entry.card;
+      return `<div class="add-row">
+        ${c.img_small ? `<img src="${esc(c.img_small)}" alt="" loading="lazy">` : ''}
+        <div class="nm"><div><b>${esc(c.name)}</b> ${cardTags(c, { reason: o.edh }).map((t) => `<span class="role role-${t.toLowerCase()}">${t}</span>`).join('')}</div>
+          <small>${o.edh ? `in ${Math.round(o.edh.incl * 100)}% of decks${o.edh.syn >= 0.05 ? ` · +${Math.round(o.edh.syn * 100)}% synergy` : ''}` : 'not on EDHREC list'} · ${manaHTML(c.mana_cost)} ${esc(c.type_line)}</small></div>
+        <button class="btn small primary" data-swap-in="${esc(c.name)}">Swap in</button>
+      </div>`;
+    }).join('') : '<p class="muted">No free cards in your collection fill this role. Try the Add cards tab, or the Optimize tab for cards to look for.</p>'}`, (el) => {
+    el.onclick = async (e) => {
+      const b = e.target.closest('[data-swap-in]'); if (!b) return;
+      await ctx.swap(name, b.dataset.swapIn);
+      closeModal();
+      toast(`Swapped ${name} for ${b.dataset.swapIn}`);
+    };
+  });
 }
 
 // ---------- side panel ----------

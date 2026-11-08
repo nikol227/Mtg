@@ -4,7 +4,7 @@ import { parseCSV, csvToImportRows, mergeRows } from '../js/csv.js';
 import { slimCard, castRequirements, canCastWith, cardRoles, commanderThemes } from '../js/cards.js';
 import {
   buildDeck, validateDeck, deckSize, deckStats, exportText, info, gamePlan, explain, suggestUpgrades, findDeckCombos, makeContext,
-  eligibleSpellCounter, thinness, fitPreview,
+  eligibleSpellCounter, thinness, fitPreview, deckProfile,
 } from '../js/builder.js';
 import { textToImportRows, looksLikeCSV } from '../js/csv.js';
 import { matchCombos, coverage } from '../js/data.js';
@@ -237,6 +237,28 @@ test('builder honours a custom land count', () => {
   const stats = deckStats({ cards: res.cards, commander: res.commander }, (n) => find(pool, n));
   assert.equal(stats.lands, 38);
   assert.equal(stats.total, 100);
+});
+
+test('deck profile follows EDHREC average deck (lands, creatures, curve, ramp)', () => {
+  const aggro = { avg: { types: { creature: 33, land: 35 }, curve: { 1: 13, 2: 23, 3: 17, 4: 5, 5: 2, 6: 1 } } };
+  const p = deckProfile(aggro);
+  assert.equal(p.lands, 35);
+  assert.ok(p.creatures[0] > 0.45, 'creature-heavy');
+  assert.ok(p.curve[2] > 0.35 && p.curve[6] < 0.05, 'low curve');
+  assert.ok(p.roles.ramp <= 5, `aggro needs little ramp (${p.roles.ramp})`);
+  const big = deckProfile({ avg: { types: { creature: 20, land: 37 }, curve: { 1: 4, 2: 10, 3: 14, 4: 14, 5: 10, 6: 8, 7: 3 } } });
+  assert.ok(big.roles.ramp >= 9, `big decks keep ramp (${big.roles.ramp})`);
+  assert.equal(deckProfile(aggro, { lands: 38 }).lands, 38, 'user setting wins');
+  assert.equal(deckProfile(null).lands, 36, 'falls back to defaults');
+  // The builder follows the profile: fewer 5+ drops for an aggro commander.
+  const pool = makePool();
+  const cmd = find(pool, 'Elf Queen');
+  const look = (n) => find(pool, n);
+  const high = (res) => deckStats({ cards: res.cards, commander: res.commander }, look).curve.slice(5).reduce((a, b) => a + b, 0);
+  const aggroDeck = buildDeck({ pool, commander: cmd, edh: { ...fakeEdh([]), ...aggro } });
+  const bigDeck = buildDeck({ pool, commander: cmd, edh: { ...fakeEdh([]), avg: { types: { creature: 20, land: 37 }, curve: { 1: 4, 2: 10, 3: 14, 4: 14, 5: 10, 6: 8, 7: 3 } } } });
+  assert.ok(high(aggroDeck) < high(bigDeck), `aggro ${high(aggroDeck)} vs big ${high(bigDeck)} cards at 5+`);
+  assert.equal(deckStats({ cards: aggroDeck.cards, commander: aggroDeck.commander }, look).lands, 35);
 });
 
 test('export text uses set and collector number', () => {

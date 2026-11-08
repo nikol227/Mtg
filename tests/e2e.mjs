@@ -132,10 +132,11 @@ assert.ok(await page.isVisible('[data-warn="4"]'), 'bracket 4 flagged: only 1 Ga
 assert.ok(!(await page.isVisible('[data-warn="3"]')), 'bracket 3 reachable thanks to a combo');
 await page.click('#settings summary');
 await page.selectOption('#set-lands', '37');
+assert.equal(await page.inputValue('#set-lands'), '37');
 if (shots) await page.screenshot({ path: `${shots}/3-build.png`, fullPage: true });
 await page.click('#go');
 await page.waitForSelector('#deck-main .tile');
-assert.equal(await page.textContent('#size-label'), '100 / 100 cards');
+assert.match(await page.textContent('#size-label'), /^100 \/ 100 cards/);
 await page.waitForSelector('.plan-step');
 assert.match(await page.textContent('#side'), /The idea[\s\S]*Early turns[\s\S]*How it wins/);
 assert.match(await page.textContent('#side'), /G Creature 2-0/, 'combo used as win condition');
@@ -149,6 +150,23 @@ await page.click('#deck-main .tile[data-card="Elf Lord"]');
 await page.waitForSelector('#modal-body .notice');
 assert.match(await page.textContent('#modal-body .notice'), /Played in 80% of 5,000 Elf Queen decks/);
 await page.click('#modal [data-close]');
+// Strategy view groups by role with chips; header shows lands and avg mana value
+assert.match(await page.textContent('#size-label'), /100 \/ 100 cards · \d+ lands · avg mana value \d\.\d\d/);
+await page.click('#view-mode [data-mode="strategy"]');
+await page.waitForSelector('#deck-main .role');
+assert.match(await page.textContent('#deck-main'), /Combo pieces[\s\S]*Commander synergy[\s\S]*Lands/);
+if (shots) await page.screenshot({ path: `${shots}/4b-strategy.png` });
+// Swap a card for an owned one in the same role
+const before = await page.evaluate(() => document.querySelectorAll('#deck-main [data-swap]').length);
+assert.ok(before > 50, 'swap buttons on cards');
+await page.click('#deck-main [data-swap="W Removal 1"]');
+await page.waitForSelector('#modal [data-swap-in]');
+const swapIn = await page.getAttribute('#modal [data-swap-in]', 'data-swap-in');
+await page.click('#modal [data-swap-in]');
+await page.waitForSelector(`#deck-main [data-card="${swapIn}"]`);
+assert.ok(!(await page.$('#deck-main [data-card="W Removal 1"]')), 'old card removed');
+assert.equal(await page.textContent('#size-label').then((t) => t.split(' ')[0]), '100');
+await page.click('#view-mode [data-mode="grid"]');
 await page.click('[data-side="stats"]');
 await page.waitForSelector('.chart');
 assert.match(await page.textContent('#side-body'), /37\s*lands/, 'land-count setting applied');
