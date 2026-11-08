@@ -10,7 +10,8 @@ import { loadContext, buildFor } from '../engine.js';
 import { COLORS, BASIC_FOR_COLOR, primaryType, nameKey } from '../cards.js';
 import { esc, manaHTML, pipsHTML, tileHTML, toast, openModal, closeModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
 import { showCard } from './card-modal.js';
-import { findSynergies, deckCautions } from '../synergy.js';
+import { findSynergies, deckCautions, planSummary } from '../synergy.js';
+import { library, shuffle, handStats, verdict, landOdds } from '../hand.js';
 
 const SECTIONS = ['Creature', 'Planeswalker', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Battle', 'Other', 'Land'];
 const SECTION_LABEL = { Creature: 'Creatures', Planeswalker: 'Planeswalkers', Instant: 'Instants', Sorcery: 'Sorceries', Artifact: 'Artifacts', Enchantment: 'Enchantments', Battle: 'Battles', Other: 'Other', Land: 'Lands' };
@@ -350,11 +351,62 @@ function renderPlan(el, deck, ctx) {
   if (!ctx.data) { el.innerHTML = '<p class="muted"><span class="spinner"></span> Loading EDHREC and combo data…</p>'; return; }
   const combos = ctx.combos();
   const plan = gamePlan(deck, lookup, { edh: ctx.data.edh, combosInDeck: combos?.complete || [], themeLabel: deck.themeLabel, bracket: deck.bracket });
-  el.innerHTML = plan.map((p) => `<div class="plan-step"><h3>${esc(p.title)}</h3><p>${esc(p.text)}</p>${p.cards.length ? `<div class="thumbs">${p.cards.slice(0, 5).map((n) => {
-    const c = lookup(n);
-    return c?.img_small ? `<img src="${esc(c.img_small)}" alt="${esc(n)}" title="${esc(n)}" data-card="${esc(n)}" loading="lazy">` : '';
-  }).join('')}</div>` : ''}</div>`).join('')
-    + `<p class="small muted">Generated from this deck's cards, EDHREC data and Commander Spellbook combos.</p>`;
+  const entries = deckEntries(deck);
+  const summary = planSummary(entries, { combos: combos?.complete || [], reasons: Object.fromEntries(entries.map((x) => [x.name, ctx.reason(x.name) || {}])), roleOf: (c) => info(c).roles });
+  // Link every card named in the summary.
+  let summaryHTML = esc(summary.text);
+  for (const n of summary.cards.sort((a, b) => b.length - a.length)) {
+    summaryHTML = summaryHTML.split(esc(n)).join(`<a href="javascript:void 0" data-card="${esc(n)}">${esc(n)}</a>`);
+  }
+  el.innerHTML = `
+    <div class="syn-label">Your game plan</div>
+    <p class="plan-summary">${summaryHTML}</p>
+    <button class="btn small" id="try-hand" style="margin-bottom:14px">Try an opening hand</button>
+    <details class="how-to-play" ${v.howOpen ? 'open' : ''}><summary><b>How to play this deck</b>: opening hand, early turns and win conditions</summary>
+    ${plan.map((p) => `<div class="plan-step"><h3>${esc(p.title)}</h3><p>${esc(p.text)}</p>${p.cards.length ? `<div class="thumbs">${p.cards.slice(0, 5).map((n) => {
+      const c = lookup(n);
+      return c?.img_small ? `<img src="${esc(c.img_small)}" alt="${esc(n)}" title="${esc(n)}" data-card="${esc(n)}" loading="lazy">` : '';
+    }).join('')}</div>` : ''}</div>`).join('')}
+    </details>
+    <p class="small muted">Generated from this deck's cards, EDHREC data and Commander Spellbook combos.</p>`;
+  el.querySelector('.how-to-play').addEventListener('toggle', (e) => { v.howOpen = e.target.open; });
+  el.querySelector('#try-hand').addEventListener('click', () => showHand(deck));
+}
+
+/** "Try an opening hand": draw 7, London mulligan, draw for turn, with a keep/mulligan read. */
+function showHand(deck) {
+  const lib = library(deck);
+  const lands = lib.filter((n) => { const c = lookup(n); return c && info(c).land; }).length;
+  const odds = landOdds(lands, lib.length);
+  let order = shuffle(lib);
+  let drawn = 7;
+  let mulligans = 0;
+  const render = () => {
+    const hand = order.slice(0, drawn);
+    const opening = order.slice(0, 7);
+    const s = handStats(opening, lookup);
+    const vd = verdict(s);
+    return `
+      <div class="row spread"><h2 style="margin:0">Opening hand</h2><button class="btn ghost small" data-close>Close</button></div>
+      <p class="small muted">${lands} lands in ${lib.length} cards: a 7-card hand has 2–4 lands ${Math.round(odds * 100)}% of the time.${mulligans ? ` Mulligan ${mulligans}: put ${mulligans} card${mulligans === 1 ? '' : 's'} from this hand on the bottom (first mulligan is free in multiplayer Commander, so put ${Math.max(0, mulligans - 1)}).` : ''}</p>
+      <div class="hand">${hand.map((n, i) => {
+        const c = lookup(n);
+        return `<figure class="${i >= 7 ? 'drawn' : ''}" data-card="${esc(n)}">${c?.img ? `<img src="${esc(c.img)}" alt="${esc(n)}">` : `<div class="img-ph">${esc(n)}</div>`}${i >= 7 ? `<figcaption>Turn ${i - 6} draw</figcaption>` : ''}</figure>`;
+      }).join('')}</div>
+      <p class="hand-verdict ${vd.keep ? 'keep' : 'mull'}"><b>${esc(vd.text)}</b> <span class="muted small">${s.lands} lands · ${s.spells} spells${s.cheap ? ` · ${s.cheap} cost 2 or less` : ''}</span></p>
+      <div class="row">
+        <button class="btn" id="h-draw">Draw a card</button>
+        <button class="btn" id="h-mull">Mulligan</button>
+        <button class="btn primary" id="h-new">New hand</button>
+      </div>`;
+  };
+  const mount = (el) => {
+    el.querySelector('#h-draw').onclick = () => { drawn = Math.min(order.length, drawn + 1); openModal(render(), mount); };
+    el.querySelector('#h-mull').onclick = () => { order = shuffle(lib); drawn = 7; mulligans++; openModal(render(), mount); };
+    el.querySelector('#h-new').onclick = () => { order = shuffle(lib); drawn = 7; mulligans = 0; openModal(render(), mount); };
+    el.querySelector('.hand').onclick = (e) => { const f = e.target.closest('[data-card]'); if (f) showCard(f.dataset.card); };
+  };
+  openModal(render(), mount);
 }
 
 function comboHTML(c, { missing = null, ownMissing = false } = {}) {

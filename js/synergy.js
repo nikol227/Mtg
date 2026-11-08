@@ -139,7 +139,49 @@ export function findSynergies(cards) {
   return groups.sort((a, b) => (b.payoffs.length * 2 + b.cards.length) - (a.payoffs.length * 2 + a.cards.length)).slice(0, 6);
 }
 
-const PROTECTION = /indestructible|hexproof|phases? out|can't be destroyed|return (all|each|those) .{0,40}to the battlefield|creatures you control gain (indestructible|hexproof|protection)/i;
+/**
+ * One-paragraph game plan in plain words, naming real cards:
+ * "Develop Mice and tokens, then use Mabel and Valley Questcaller to strengthen your board.
+ *  Keep cards coming with A and B, and finish through combat with C or D."
+ * Returns { text, cards } where cards are the names mentioned (for links).
+ */
+export function planSummary(cards, { groups = findSynergies(cards), combos = [], reasons = {}, roleOf } = {}) {
+  const cmd = cards.find((x) => x.commander);
+  const nonland = cards.filter((x) => !isLand(x.card) && !x.commander);
+  const mentioned = [];
+  const say = (names) => { mentioned.push(...names); return list(names); };
+  const syn = (x) => reasons[x.name]?.syn ?? -1;
+  // What you develop: the main creature-type team and/or tokens.
+  const develop = [];
+  for (const g of groups) {
+    if (g.key.startsWith('tribe:')) develop.push(plural(g.key.slice(6)));
+    else if (g.key === 'tokens') develop.push('tokens');
+    else if (g.key === 'equipment') develop.push('equipment');
+    else if (g.key === 'counters') develop.push('+1/+1 counters');
+    if (develop.length === 2) break;
+  }
+  const what = develop.length ? develop.join(' and ') : 'your board';
+  const engine = [...nonland].filter((x) => roleOf(x.card).size === 0 || isCreature(x.card)).sort((a, b) => syn(b) - syn(a))[0];
+  const verb = develop.length ? 'to strengthen your board' : 'to take over the game';
+  const parts = [`Develop ${what}, then use ${say([cmd?.name, engine?.name].filter(Boolean))} ${verb}.`];
+  const draw = nonland.filter((x) => roleOf(x.card).has('draw'))
+    .sort((a, b) => (ENGINE.test(text(b.card)) - ENGINE.test(text(a.card))) || syn(b) - syn(a)).slice(0, 2);
+  const keep = draw.length ? `Keep cards coming with ${say(draw.map((x) => x.name))}, and ` : '';
+  let finish;
+  if (combos.length) {
+    const c = combos[0];
+    finish = `win by assembling ${say(c.cards)} (${c.produces.slice(0, 2).join(', ').toLowerCase()})`;
+  } else {
+    const closers = nonland.filter((x) => /you win the game|each opponent loses|double strike|extra combat|creatures you control get \+\d+\/\+\d+ (and gain trample )?until end of turn|attacking creatures (you control )?get \+\d+\/\+\d+|creatures you control get \+\d+\/\+0/i.test(text(x.card)))
+      .sort((a, b) => syn(b) - syn(a)).slice(0, 2);
+    const fallback = closers.length ? closers : nonland.filter((x) => isCreature(x.card)).sort((a, b) => b.card.cmc - a.card.cmc).slice(0, 2);
+    finish = fallback.length ? `finish through combat with ${fallback.length > 1 ? `${say([fallback[0].name])} or ${say([fallback[1].name])}` : say([fallback[0].name])}` : 'finish through combat';
+  }
+  parts.push(`${keep ? keep : ''}${keep ? finish : finish[0].toUpperCase() + finish.slice(1)}.`);
+  return { text: parts.join(' '), cards: [...new Set(mentioned)] };
+}
+
+const PROTECTION =/indestructible|hexproof|phases? out|can't be destroyed|return (all|each|those) .{0,40}to the battlefield|creatures you control gain (indestructible|hexproof|protection)/i;
 const ENGINE = /whenever[^.]*draw|at the beginning of[^.]*draw|draw a card for each|draw cards equal/i;
 
 /**

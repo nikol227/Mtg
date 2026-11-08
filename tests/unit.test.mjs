@@ -10,7 +10,8 @@ import { textToImportRows, looksLikeCSV } from '../js/csv.js';
 import { matchCombos, coverage } from '../js/data.js';
 import { nameKey, colorMask } from '../js/cards.js';
 import { fetchCollection } from '../js/scryfall.js';
-import { findSynergies, deckCautions } from '../js/synergy.js';
+import { findSynergies, deckCautions, planSummary } from '../js/synergy.js';
+import { library, shuffle, handStats, verdict, landOdds } from '../js/hand.js';
 import { bulkPile } from './fixtures.mjs';
 
 const MANABOX = `Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall ID,Purchase price,Misprint,Altered,Condition,Language,Purchase price currency
@@ -298,6 +299,33 @@ test('synergy groups and deck-wide cautions from card text', () => {
   const cautions = deckCautions(cards, stats, ['G']);
   assert.ok(cautions.some((c) => /removal/.test(c)), 'flags light removal');
   assert.ok(cautions.some((c) => /card access/.test(c)), 'flags few draw engines');
+});
+
+test('opening hands: library, verdicts and land odds', () => {
+  const pool = makePool(1);
+  const look = (n) => find(pool, n) || BASIC_CARDS[n];
+  const deck = { cards: { Forest: 36, 'G Creature 1-0': 1, 'G Creature 2-0': 1, 'G Creature 6-0': 1 }, commander: 'Elf Queen' };
+  const lib = library(deck);
+  assert.equal(lib.length, 39);
+  assert.ok(!lib.includes('Elf Queen'), 'commander is not in the library');
+  let seed = 1;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  assert.notDeepEqual(shuffle(lib, rand), lib);
+  assert.equal(verdict(handStats(['Forest', 'G Creature 1-0', 'G Creature 6-0', 'G Creature 6-0', 'G Creature 6-0', 'G Creature 6-0', 'G Creature 6-0'], look)).keep, false, 'one land: mulligan');
+  const good = handStats(['Forest', 'Forest', 'Forest', 'G Creature 1-0', 'G Creature 2-0', 'G Creature 6-0', 'G Ramp'], look);
+  assert.deepEqual(good, { lands: 3, spells: 4, cheap: 3, ramp: 1 });
+  assert.match(verdict(good).text, /^Keep: 3 lands/);
+  const p = landOdds(36, 99);
+  assert.ok(p > 0.7 && p < 0.8, `36 lands in 99: ${p}`);
+});
+
+test('one-paragraph game plan names real cards', () => {
+  const pool = makePool(1);
+  const pick = (re) => pool.filter((e) => re.test(e.name)).map((e) => ({ name: e.name, count: 1, card: e.card }));
+  const cards = [{ ...pick(/^Elf Queen$/)[0], commander: true }, ...pick(/^(G Creature|Elf Lord|G Draw|G Removal)/)];
+  const plan = planSummary(cards, { roleOf: (c) => info(c).roles, reasons: { 'Elf Lord': { syn: 0.5 } } });
+  assert.match(plan.text, /^Develop Elves[\s\S]*, then use Elf Queen and Elf Lord to strengthen your board\. Keep cards coming with G Draw \d and G Draw \d, and finish/);
+  assert.ok(plan.cards.includes('Elf Lord'));
 });
 
 test('export text uses set and collector number', () => {

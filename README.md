@@ -38,6 +38,13 @@ It is a static site with no build step and no server. Your collection and decks 
   - balances the mana curve and the counts of ramp, card draw, removal and board wipes;
   - picks on-color nonbasic lands and fills the rest with basics.
 - **Filling gaps:** if your collection runs out of usable spells, the remaining slots are filled with the commander's top EDHREC recommendations you don't own, not with extra basic lands. Cheaper cards are preferred. Those cards are marked **Buy** with a price, and a **To buy** tab shows the total, a TCGplayer link and a copyable list. Your own cards are always used first.
+- **Deck editor:**
+  - **Images / List / Strategy views.** Strategy groups cards by role: combo pieces, win conditions, synergy, ramp, draw, removal and wipes. Each card shows role chips, and a **⇄ swap** button suggests owned cards in the same role.
+  - **Game plan:** a one-paragraph plan naming real cards ("Develop Mice and tokens, then use Mabel and … Keep cards coming with …, and finish through combat with …"), with a detailed "How to play this deck" guide below it.
+  - **Try an opening hand:** draw 7, mulligan or draw for the turn, with a keep or mulligan verdict and the odds of a 2–4 land hand.
+  - **Synergies:** groups of cards that work together, found from rules text (creature-type teams, tokens, valiant/targeting, equipment, +1/+1 counters, lifegain, sacrifice, spells, graveyard, landfall, artifacts). Each group lists what it needs and what to watch for. Below them, deck-wide cautions: tight colored mana, restricted-mana lands, few draw engines, sweeper exposure, light removal and a top-heavy curve.
+  - **Optimize (Deck Care):** choose *Smoother mana*, *More card draw* or *Better answers* to get in/out swaps from your own cards, then apply the ones you like. It also lists EDHREC cards for that goal that you don't own.
+- **Builder targets come from EDHREC's average deck** for the commander (or the chosen strategy or bracket page): land count, creature share and mana curve. The ramp target scales with the curve, so aggro commanders aren't padded with mana rocks.
 - **Explanations:** every card says why it's in the deck. For example: "Played in 64% of 46,165 Atraxa decks on EDHREC (synergy +22%). Role: Ramp. Combo with Basalt Monolith: Infinite colorless mana."
 - **Game plan:** a short guide to the deck's idea, early turns, engine cards, how it wins (combo or closers) and interaction, built from the deck's own cards.
 - **Combos page:** every combo you can build from your collection, and every combo you're one card away from, with the missing card's price. You can filter by colors, bracket and text.
