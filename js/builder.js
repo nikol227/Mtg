@@ -408,7 +408,7 @@ export function explain(name, reason, { commanderName = 'this commander', varian
   if (reason.incl != null) {
     const pct = Math.round(reason.incl * 100);
     const syn = Math.round(reason.syn * 100);
-    parts.push(`Played in ${pct}% of ${numDecks ? `${numDecks.toLocaleString()} ` : ''}${commanderName} decks on EDHREC${variantLabel ? ` (${variantLabel} page)` : ''}${syn >= 5 ? ` (synergy +${syn}%: much more common here than in other decks of these colors)` : syn <= -5 ? ' (a general staple rather than a synergy pick)' : ''}.`);
+    parts.push(`Played in ${pct}% of ${numDecks ? `${numDecks.toLocaleString()} ` : ''}${commanderName} decks on EDHREC${variantLabel ? ` (${variantLabel} page)` : ''}${syn >= 15 ? ` (synergy +${syn}%: much more common here than in other decks of these colors)` : syn >= 5 ? ` (synergy +${syn}%: a bit more common here than in other decks of these colors)` : syn <= -5 ? ' (a general staple rather than a synergy pick)' : ''}.`);
   } else if (reason.theme) {
     parts.push(`Fits ${commanderName}'s abilities.`);
   } else {

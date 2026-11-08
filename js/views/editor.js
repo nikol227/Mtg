@@ -96,6 +96,8 @@ function makeCtx(root, deck) {
       const card = lookup(name);
       const combosById = new Map((ctx.combos()?.complete || []).map((c) => [c.id, c]));
       const r = { ...(ctx.reason(name) || {}) };
+      // Roles always come from the current rules, not from what was saved when the deck was built.
+      if (card) r.roles = reasonFor(card, ctx.builderCtx()).roles;
       if (ctx.combos()) r.combos = ctx.combos().complete.filter((c) => c.keys.includes(nameKey(name))).map((c) => c.id);
       return explain(name, r, { commanderName: deck.commander, variantLabel: deck.edhVariantLabel, numDecks: deck.numDecks || ctx.data?.edh?.numDecks || 0, combosById, basic: card && info(card).basic });
     },

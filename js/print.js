@@ -101,7 +101,7 @@ export function guideParts(g) {
     <table class="list">${s.items.map((x) => `<tr>
       <td class="img">${x.card?.img_small ? `<img src="${esc(x.card.img_small)}" alt="">` : ''}</td>
       <td class="n">${x.count > 1 ? `${x.count}× ` : ''}<b>${esc(x.name)}</b> ${mana(x.card?.mana_cost)}${x.buy ? ' <span class="buy">TO BUY</span>' : ''}
-        <div class="tags">${esc(x.card?.type_line || '')}${x.tags.length ? ` · ${x.tags.map(esc).join(', ')}` : ''}</div>
+        <div class="tags">${esc(x.card?.type_line || '')}${x.tags.filter((t) => t !== 'Land').length ? ` · ${x.tags.filter((t) => t !== 'Land').map(esc).join(', ')}` : ''}</div>
         ${x.why ? `<div class="why">${esc(x.why)}</div>` : ''}</td>
     </tr>`).join('')}</table>`).join('');
   const shop = g.toBuy.length ? `<h2>Shopping list</h2>
@@ -126,7 +126,9 @@ export function guideParts(g) {
   .box .cards { font-family: system-ui, sans-serif; font-size: 13px; color: #6b4a00; }
   ul { margin: 4px 0 8px; padding-left: 22px; }
   li { margin-bottom: 4px; }
-  dl { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; font-size: 14px; }
+  dl { font-size: 14px; margin: 0; }
+  dl .term { display: grid; grid-template-columns: 140px 1fr; gap: 0 12px; padding: 3px 0; break-inside: avoid; page-break-inside: avoid; }
+  dd { margin: 0; }
   dt { font-weight: 700; }
   table.list { width: 100%; border-collapse: collapse; }
   table.list tr { break-inside: avoid; border-bottom: 1px solid #eee8dc; }
@@ -143,7 +145,7 @@ export function guideParts(g) {
   body.noimg td.img, body.noimg .head > img { display: none; }
   .foot { margin-top: 40px; font-size: 12px; color: #6b665e; font-family: system-ui, sans-serif; }
   @media print { .toolbar { display: none; } main { padding: 0; max-width: none; } a { color: inherit; text-decoration: none; } @page { margin: 14mm; } }
-  @media (max-width: 600px) { .head { flex-direction: column; } .head > img { width: 160px; } dl { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .head { flex-direction: column; } .head > img { width: 160px; } dl .term { grid-template-columns: 1fr; } }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 `;
   const body = `<div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button>
@@ -180,7 +182,7 @@ export function guideParts(g) {
   ${groups ? `<h2>Cards that work together</h2>${groups}` : ''}
   ${combos ? `<h2>Combos</h2><p>Two or more cards that together create a powerful or infinite effect.</p><ul>${combos}</ul>` : ''}
   ${g.cautions.length ? `<h2>Things to watch out for</h2><ul>${g.cautions.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
-  ${g.glossary.length ? `<h2>Keywords in this deck</h2><dl>${g.glossary.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
+  ${g.glossary.length ? `<h2>Keywords in this deck</h2><dl>${g.glossary.map(([k, v]) => `<div class="term"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : ''}
 
   <h2>Decklist</h2>
   <p class="muted">Grouped by card type. Each card says what it does for the deck.</p>
