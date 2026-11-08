@@ -80,6 +80,13 @@ const mana = (cost) => (cost || '').split(' // ').map((p) => manaSymbols(p).map(
  *      glossary, landOdds, edhUrl, appUrl }
  */
 export function guideHTML(g) {
+  const p = guideParts(g);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(p.title)}</title><style>${p.css}</style></head><body>${p.body}</body></html>`;
+}
+
+/** The guide as { title, css, body } so the app can show it as a normal page (prints reliably in every browser). */
+export function guideParts(g) {
   const d = g.deck;
   const cmd = g.commander;
   const today = new Date().toLocaleDateString();
@@ -100,9 +107,8 @@ export function guideHTML(g) {
   const shop = g.toBuy.length ? `<h2>Shopping list</h2>
     <p>These cards were recommended to fill the deck because your collection ran out. Total about <b>$${g.cost.toBuy.toFixed(2)}</b>.</p>
     <table class="shop">${g.toBuy.map((x) => `<tr><td>${x.count} ${esc(x.name)}</td><td class="r">${x.price ? `$${Number(x.price).toFixed(2)}` : '—'}</td></tr>`).join('')}</table>` : '';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(d.name)}: beginner's guide</title>
-<style>
+  const title = `${d.name}: beginner's guide`;
+  const css = `
   :root { color-scheme: light; }
   body { font: 15px/1.5 Georgia, 'Times New Roman', serif; color: #1d1b18; background: #fff; margin: 0; }
   main { max-width: 800px; margin: 0 auto; padding: 28px 24px 60px; }
@@ -138,11 +144,13 @@ export function guideHTML(g) {
   .foot { margin-top: 40px; font-size: 12px; color: #6b665e; font-family: system-ui, sans-serif; }
   @media print { .toolbar { display: none; } main { padding: 0; max-width: none; } a { color: inherit; text-decoration: none; } @page { margin: 14mm; } }
   @media (max-width: 600px) { .head { flex-direction: column; } .head > img { width: 160px; } dl { grid-template-columns: 1fr; } }
-</style></head><body>
-<div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button>
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+`;
+  const body = `<div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button>
   <label><input type="checkbox" checked onchange="document.body.classList.toggle('noimg', !this.checked)"> Card images</label>
+  <span id="guide-extra"></span>
   <span>Tip: choose “Save as PDF” as the printer to keep a copy.</span></div>
-<main>
+<main class="guide">
   <div class="head">
     ${cmd?.img ? `<img src="${esc(cmd.img)}" alt="${esc(cmd.name)}">` : ''}
     <div>
@@ -180,5 +188,6 @@ export function guideHTML(g) {
   ${shop}
 
   <p class="foot">Made with Bulk Commander. Card data and images from Scryfall; deck statistics from EDHREC${g.edhUrl ? ` (${esc(g.edhUrl)})` : ''}; combos from Commander Spellbook. Prices are approximate. Not affiliated with Wizards of the Coast.</p>
-</main></body></html>`;
+</main>`;
+  return { title, css, body };
 }

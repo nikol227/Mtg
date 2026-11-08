@@ -155,8 +155,8 @@ const ROLE_PATTERNS = {
   removal: [
     /(destroy|exile) target (creature|permanent|nonland permanent|artifact|enchantment|planeswalker|nonblack|nonwhite|nonartifact|attacking|tapped)/i,
     /deals? (\d+|x) damage to (any target|target creature|target attacking|each creature|target player or planeswalker|target creature or planeswalker)/i,
-    /target creature gets -\d+\/-\d+/i,
-    /target creature (an opponent controls )?(gets|loses)/i, // weak, filtered below
+    /target creature (an opponent controls )?gets -\d+\/-\d+/i,
+    /deals damage equal to .{0,40} to (target creature|any target|target .{0,30}creature)/i,
     /fights? (target|another target|up to one target)/i,
     /return target (creature|nonland permanent).{0,30}to its owner's hand/i,
     /target (player|opponent) sacrifices/i,
@@ -167,18 +167,12 @@ const ROLE_PATTERNS = {
   ramp: [/search your library for (a|up to two|two) (basic )?(land|forest|plains|island|swamp|mountain)/i, /add \{[WUBRGC]\}|add one mana|add (two|three) mana|mana of any (one )?colou?r/i, /put a land card from your hand onto the battlefield/i, /you may play an additional land/i],
 };
 
-const WEAK_REMOVAL = /target creature (an opponent controls )?(gets|loses)/i;
-
 export function cardRoles(c) {
   const text = c.oracle_text || '';
   const roles = new Set();
   if (isLand(c)) return roles;
   for (const [role, pats] of Object.entries(ROLE_PATTERNS)) {
     for (const p of pats) {
-      if (p === WEAK_REMOVAL) {
-        if (/gets -\d+\/-\d+/i.test(text)) roles.add('removal');
-        continue;
-      }
       if (p.test(text)) { roles.add(role); break; }
     }
   }

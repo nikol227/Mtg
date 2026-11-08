@@ -13,7 +13,7 @@ import { showCard } from './card-modal.js';
 import { findSynergies, deckCautions, planSummary } from '../synergy.js';
 import { library, shuffle, handStats, verdict, landOdds } from '../hand.js';
 import { deckTitle } from '../names.js';
-import { guideHTML, glossaryFor } from '../print.js';
+import { guideHTML, guideParts, glossaryFor } from '../print.js';
 
 const SECTIONS = ['Creature', 'Planeswalker', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Battle', 'Other', 'Land'];
 const SECTION_LABEL = { Creature: 'Creatures', Planeswalker: 'Planeswalkers', Instant: 'Instants', Sorcery: 'Sorceries', Artifact: 'Artifacts', Enchantment: 'Enchantments', Battle: 'Battles', Other: 'Other', Land: 'Lands' };
@@ -197,7 +197,7 @@ function bindHeader(root, deck, ctx) {
     if (await rebuildWith({}, e.target)) toast('Deck rebuilt');
   });
   root.querySelector('#export').addEventListener('click', () => showExport(deck));
-  root.querySelector('#print-guide').addEventListener('click', () => openGuide(deck, ctx));
+  root.querySelector('#print-guide').addEventListener('click', () => openGuide(deck));
   root.querySelector('#dup').addEventListener('click', async () => {
     const copy = { ...structuredClone(deck), id: newDeckId(), name: `${deck.name} (copy)`, created: Date.now() };
     await saveDeck(copy);
@@ -442,10 +442,41 @@ function comboHTML(c, { missing = null, ownMissing = false } = {}) {
   </div>`;
 }
 
-/** Open the printable beginner's guide in a new tab (print it or save it as a PDF). */
-function openGuide(deck, ctx) {
-  const win = window.open('', '_blank');
-  if (!win) { toast('Allow pop-ups for this site to open the guide.'); return; }
+/**
+ * Open the printable beginner's guide as its own page (#/guide/<id>) in a new tab.
+ * It's a normally loaded page, so every browser (including Safari) prints it correctly.
+ */
+function openGuide(deck) {
+  const url = `${location.pathname}${location.search}#/guide/${encodeURIComponent(deck.id)}`;
+  const win = window.open(url, '_blank');
+  if (!win) location.hash = `#/guide/${encodeURIComponent(deck.id)}`;
+}
+
+/** Full-page guide view: replaces the app UI with the printable document. */
+export async function renderGuide(id) {
+  const deck = state.decks.get(id);
+  document.body.className = '';
+  if (!deck) { document.body.innerHTML = '<p style="padding:24px;font-family:system-ui">Deck not found. <a href="./">Back to the app</a></p>'; return; }
+  document.body.innerHTML = '<p style="padding:24px;font-family:system-ui">Preparing your guide…</p>';
+  const ctx = makeCtx(null, deck);
+  ctx.data = await loadContext({ commanderName: deck.commander, slug: deck.edhSlug, theme: deck.theme, bracket: deck.theme ? null : deck.bracket });
+  const g = guideData(deck, ctx);
+  const p = guideParts(g);
+  document.title = p.title;
+  // Use only the guide's own styles, so the app's layout can't affect the page or its printout.
+  document.querySelectorAll('link[rel="stylesheet"]').forEach((l) => l.remove());
+  const style = document.createElement('style');
+  style.textContent = p.css;
+  document.head.appendChild(style);
+  document.body.innerHTML = p.body;
+  const extra = document.getElementById('guide-extra');
+  extra.innerHTML = '<button id="g-dl" type="button">Download</button> <button id="g-back" type="button">Back to the deck</button>';
+  document.getElementById('g-dl').onclick = () => download(`${deck.name.replace(/[^\w\- ]+/g, '').trim() || 'deck'} - beginners guide.html`, guideHTML(g), 'text/html');
+  document.getElementById('g-back').onclick = () => { location.hash = `#/deck/${encodeURIComponent(deck.id)}`; location.reload(); };
+}
+
+/** Everything the guide shows, gathered from the deck and its EDHREC/combo data. */
+function guideData(deck, ctx) {
   const entries = deckEntries(deck);
   const groups = findSynergies(entries);
   const combos = ctx.combos()?.complete || [];
@@ -465,7 +496,7 @@ function openGuide(deck, ctx) {
   }));
   const toBuy = Object.entries(deck.toBuy || {}).map(([name, count]) => ({ name, count, price: lookup(name)?.price }));
   if (!commanderOwned && cmd) toBuy.unshift({ name: `${cmd.name} (commander)`, count: 1, price: cmd.price });
-  const html = guideHTML({
+  return {
     deck,
     commander: cmd,
     bracketLabel: BRACKETS.find((b) => b.n === deck.bracket)?.label || '',
@@ -481,10 +512,7 @@ function openGuide(deck, ctx) {
     glossary: glossaryFor(entries.map((x) => x.card)),
     landOdds: landOdds(stats.lands, 99),
     edhUrl: deck.edhSlug ? edhrecUrl(deck.edhSlug, deck.theme) : null,
-  });
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+  };
 }
 
 /** The deck's cards (with the commander) as [{name, card, count}] for the synergy/caution rules. */

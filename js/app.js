@@ -23,6 +23,9 @@ function render({ fromRoute = false } = {}) {
   const key = `${r.page}/${r.arg || ''}`;
   if (fromRoute && current !== key) window.scrollTo(0, 0);
   current = key;
+  // The printable guide replaces the whole page; leaving it needs a fresh app page.
+  if (r.page === 'guide') return editorView.renderGuide(decodeURIComponent(r.arg || ''));
+  if (!document.body.contains(root)) { location.reload(); return undefined; }
   if (document.getElementById('modal').open && fromRoute) closeModal();
   switch (r.page) {
     case 'build': return buildView.render(root);

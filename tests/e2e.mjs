@@ -81,7 +81,7 @@ page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resourc
 
 const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="488" height="680"><rect width="100%" height="100%" fill="#556"/></svg>';
 let apiCalls = 0;
-await page.route('https://api.scryfall.com/**', async (route) => {
+await page.context().route('https://api.scryfall.com/**', async (route) => {
   const url = route.request().url();
   if (url.includes('/cards/named')) return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg });
   apiCalls++;
@@ -89,15 +89,15 @@ await page.route('https://api.scryfall.com/**', async (route) => {
   const look = (i) => (i.id ? byId.get(i.id) : byName.get((i.name || '').toLowerCase()));
   await route.fulfill({ json: { object: 'list', data: identifiers.map(look).filter(Boolean), not_found: identifiers.filter((i) => !look(i)) } });
 });
-await page.route(/img\.test|svgs\.scryfall\.io/, (r) => r.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg }));
-await page.route('https://json.edhrec.com/**', (r) => {
+await page.context().route(/img\.test|svgs\.scryfall\.io/, (r) => r.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg }));
+await page.context().route('https://json.edhrec.com/**', (r) => {
   const m = r.request().url().match(/commanders\/([a-z0-9-]+)(?:\/([a-z-]+))?\.json/);
   const p = m && EDH[m[1]];
   return p ? r.fulfill({ json: p, headers: { 'access-control-allow-origin': '*' } }) : r.fulfill({ status: 404, body: '' });
 });
-await page.route('**/data/combos.json', (r) => r.fulfill({ json: combosJson }));
-await page.route('**/data/commanders.json', (r) => r.fulfill({ json: commandersJson }));
-await page.route('**/data/meta.json', (r) => r.fulfill({ json: metaJson }));
+await page.context().route('**/data/combos.json', (r) => r.fulfill({ json: combosJson }));
+await page.context().route('**/data/commanders.json', (r) => r.fulfill({ json: commandersJson }));
+await page.context().route('**/data/meta.json', (r) => r.fulfill({ json: metaJson }));
 
 await page.goto(base);
 await page.waitForSelector('#dropzone');
@@ -221,12 +221,20 @@ await page.waitForSelector('#deck-main .thumb-row');
 assert.match(await page.textContent('#issues'), /Popular Guy: not free in your collection \(your commander\)/);
 // Printable beginner's guide opens in a new tab with every section, incl. the shopping list
 const [guide] = await Promise.all([page.waitForEvent('popup'), page.click('#print-guide')]);
-await guide.waitForLoadState();
+await guide.waitForSelector('main.guide h1');
+assert.match(guide.url(), /#\/guide\//, 'guide is a real page of the app');
 const guideText = await guide.textContent('main');
 for (const s of ['Your game plan', 'Before you play', 'How to play this deck', 'Decklist', 'Shopping list', 'Popular Guy (commander)']) {
   assert.ok(guideText.includes(s), `guide has ${s}`);
 }
+// Printing produces real pages, not a blank sheet
+const pdf = await guide.pdf({ format: 'Letter' });
+const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
+assert.ok(pdf.length > 30000 && pages >= 3, `printed guide: ${pdf.length} bytes, ${pages} pages`);
 if (shots) await guide.screenshot({ path: `${shots}/5c-guide.png`, fullPage: false });
+// Download button saves the guide as a file
+const [dl] = await Promise.all([guide.waitForEvent('download'), guide.click('#g-dl')]);
+assert.match(dl.suggestedFilename(), /beginners guide\.html$/);
 await guide.close();
 // Costs: whole-deck value, and what you'd need to buy (cards marked to buy + the unowned commander)
 assert.match(await page.textContent('#cost-label'), /Deck value \$\d+\.\d\d · To buy: \$\d+\.\d\d \(\d+ cards\)/);

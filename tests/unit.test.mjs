@@ -62,6 +62,11 @@ test('roles are detected from oracle text', () => {
   assert.deepEqual(r('Draw two cards.'), ['draw']);
   assert.deepEqual(r('Search your library for a basic land card, put it onto the battlefield tapped.'), ['ramp']);
   assert.ok(r('Destroy all creatures.').includes('wipe'));
+  // Pump and protection spells are not removal; shrink and bite effects are.
+  assert.deepEqual(r('Target creature gets +2/+2 and gains indestructible until end of turn.'), []);
+  assert.deepEqual(r('Target creature you control gets +1/+1 until end of turn.'), []);
+  assert.deepEqual(r('Target creature an opponent controls gets -3/-3 until end of turn.'), ['removal']);
+  assert.deepEqual(r('Target creature you control deals damage equal to its power to target creature you don\'t control.'), ['removal']);
 });
 
 test('commander themes include tribes named in text', () => {
