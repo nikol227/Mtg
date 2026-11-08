@@ -4,7 +4,7 @@ import { parseCSV, csvToImportRows, mergeRows } from '../js/csv.js';
 import { slimCard, castRequirements, canCastWith, cardRoles, commanderThemes } from '../js/cards.js';
 import {
   buildDeck, validateDeck, deckSize, deckStats, exportText, info, gamePlan, explain, suggestUpgrades, findDeckCombos, makeContext,
-  eligibleSpellCounter, thinness, fitPreview, deckProfile,
+  eligibleSpellCounter, thinness, fitPreview, deckProfile, deckCare, BASIC_CARDS,
 } from '../js/builder.js';
 import { textToImportRows, looksLikeCSV } from '../js/csv.js';
 import { matchCombos, coverage } from '../js/data.js';
@@ -259,6 +259,28 @@ test('deck profile follows EDHREC average deck (lands, creatures, curve, ramp)',
   const bigDeck = buildDeck({ pool, commander: cmd, edh: { ...fakeEdh([]), avg: { types: { creature: 20, land: 37 }, curve: { 1: 4, 2: 10, 3: 14, 4: 14, 5: 10, 6: 8, 7: 3 } } } });
   assert.ok(high(aggroDeck) < high(bigDeck), `aggro ${high(aggroDeck)} vs big ${high(bigDeck)} cards at 5+`);
   assert.equal(deckStats({ cards: aggroDeck.cards, commander: aggroDeck.commander }, look).lands, 35);
+});
+
+test('Deck Care suggests goal-directed swaps from owned cards', () => {
+  const pool = makePool(1);
+  const cmd = find(pool, 'Elf Queen');
+  const look = (n) => find(pool, n) || BASIC_CARDS[n];
+  const ctx = makeContext({ commander: cmd, bracket: 3 });
+  // A weak deck: no removal, no dual land, mostly vanilla creatures.
+  const cards = { Forest: 18, Plains: 18 };
+  for (const e of pool) if (/^[GW] Creature/.test(e.name) && Object.keys(cards).length < 60) cards[e.name] = 1;
+  const answers = deckCare('answers', { deckCards: cards, pool, ctx, lookupCard: look });
+  assert.ok(answers.length > 0);
+  for (const s of answers) {
+    assert.ok(/Removal/.test(s.in.name), `${s.in.name} is removal`);
+    assert.ok(!/Removal/.test(s.out.name));
+  }
+  const mana = deckCare('mana', { deckCards: cards, pool, ctx, lookupCard: look });
+  const dual = mana.find((s) => s.in.name === 'Selesnya Guildgate');
+  assert.ok(dual && ['Forest', 'Plains'].includes(dual.out.name), 'dual land replaces a basic');
+  const protectedCard = 'G Creature 1-0';
+  const draw = deckCare('draw', { deckCards: cards, pool, ctx, lookupCard: look, protect: new Set([protectedCard]) });
+  assert.ok(draw.every((s) => s.out.name !== protectedCard), 'protected cards are never cut');
 });
 
 test('export text uses set and collector number', () => {

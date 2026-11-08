@@ -1,7 +1,7 @@
 import { state, lookup, pool, saveDeck, deleteDeck, newDeckId, availabilityFn, freeByKey, ensureCards } from '../store.js';
 import {
   FORMAT, validateDeck, deckStats, deckSize, exportText, info, makeContext, scoreCard, isGameChanger,
-  cardTags, strategyGroup, STRATEGY_GROUPS, swapOptions,
+  cardTags, strategyGroup, STRATEGY_GROUPS, swapOptions, deckCare, CARE_GOALS, goalValue, fitsDeck,
   reasonFor, explain, gamePlan, findDeckCombos, BRACKET_RULES,
 } from '../builder.js';
 import { BRACKETS, edhrecUrl } from '../edhrec.js';
@@ -312,6 +312,7 @@ function renderSide(root, deck, ctx) {
       <button class="chip" data-side="plan" aria-pressed="${v.side === 'plan'}">Game plan</button>
       <button class="chip" data-side="combos" aria-pressed="${v.side === 'combos'}">Combos${combos ? ` <span class="count">${combos.complete.length}</span>` : ''}</button>
       <button class="chip" data-side="stats" aria-pressed="${v.side === 'stats'}">Stats</button>
+      <button class="chip" data-side="care" aria-pressed="${v.side === 'care'}">Optimize</button>
       <button class="chip" data-side="add" aria-pressed="${v.side === 'add'}">Add cards</button>
       ${buyCount(deck) ? `<button class="chip" data-side="buy" aria-pressed="${v.side === 'buy'}">To buy <span class="count">${buyCount(deck)}</span></button>` : ''}
     </div>
@@ -324,6 +325,7 @@ function renderSide(root, deck, ctx) {
   if (v.side === 'buy' && !buyCount(deck)) v.side = 'plan';
   if (v.side === 'stats') renderStats(body, deck, ctx);
   else if (v.side === 'buy') renderBuy(body, deck, ctx);
+  else if (v.side === 'care') renderCare(body, deck, ctx);
   else if (v.side === 'plan') renderPlan(body, deck, ctx);
   else if (v.side === 'combos') renderCombos(body, deck, ctx);
   else {
@@ -360,6 +362,76 @@ function comboHTML(c, { missing = null, ownMissing = false } = {}) {
     ${missing ? `<div class="small">${ownMissing ? '<span class="tag ok">Missing piece is in your collection</span>' : '<span class="tag">Missing piece not owned</span>'}</div>` : ''}
     <div class="small"><a href="${comboUrl(c)}" target="_blank" rel="noopener">How it works (Commander Spellbook) ↗</a> · min. bracket ${c.minBracket}</div>
   </div>`;
+}
+
+/** Deck Care: pick a goal, review in/out swaps from your own cards, apply the ones you like. */
+function renderCare(el, deck, ctx) {
+  v.careGoal ||= 'mana';
+  const bctx = ctx.builderCtx();
+  const comboKeys = new Set((ctx.combos()?.complete || []).flatMap((c) => c.keys));
+  const protect = new Set(Object.keys(deck.cards).filter((n) => comboKeys.has(nameKey(n)) || (ctx.reason(n)?.syn ?? 0) >= 0.25));
+  const swaps = deckCare(v.careGoal, { deckCards: deck.cards, pool: pool(deck.id), ctx: bctx, lookupCard: lookup, protect });
+  const chosen = new Set(swaps.map((_, i) => i));
+  const img = (c, n) => (c?.img_small ? `<img src="${esc(c.img_small)}" alt="" data-card="${esc(n)}">` : '');
+  el.innerHTML = `
+    <p class="small">Find swaps from cards you already own. Compare what comes in and goes out, then keep only the changes you like.</p>
+    <div class="chips" id="care-goals" style="margin-bottom:8px">${Object.entries(CARE_GOALS).map(([k, g]) => `<button class="chip" data-goal="${k}" aria-pressed="${v.careGoal === k}">${esc(g.label)}</button>`).join('')}</div>
+    <p class="small muted">${esc(CARE_GOALS[v.careGoal].blurb)} Combo pieces and key synergy cards are never cut.</p>
+    ${swaps.length ? `<div id="care-swaps">${swaps.map((s, i) => `
+      <label class="care-swap">
+        <input type="checkbox" data-i="${i}" checked>
+        <span class="care-out">${img(s.out.card, s.out.name)}<span><span class="muted small">Out</span><br><a href="javascript:void 0" data-card="${esc(s.out.name)}">${esc(s.out.name)}</a></span></span>
+        <span class="care-in">${img(s.in.card, s.in.name)}<span><span class="muted small">In</span><br><a href="javascript:void 0" data-card="${esc(s.in.name)}">${esc(s.in.name)}</a><br><span class="small muted">${esc(s.why)}${s.in.edh ? ` In ${Math.round(s.in.edh.incl * 100)}% of decks.` : ''}</span></span></span>
+      </label>`).join('')}</div>
+      <button class="btn small primary" id="care-apply" style="margin-top:10px">Apply selected swaps</button>`
+    : '<p class="muted small">No swaps from your collection for this goal: the deck already has the best of what you own, or nothing free fits.</p>'}
+    <h3 style="margin-top:16px">Cards to look for</h3>
+    <div id="care-look" class="small muted"><span class="spinner"></span> Checking EDHREC…</div>`;
+  // Clicking a card name inside a swap row opens the card instead of toggling the checkbox.
+  el.addEventListener('click', (e) => { if (e.target.closest('label [data-card]')) e.preventDefault(); }, true);
+  el.querySelector('#care-goals').onclick = (e) => {
+    const b = e.target.closest('[data-goal]'); if (!b) return;
+    v.careGoal = b.dataset.goal; renderCare(el, deck, ctx);
+  };
+  el.querySelectorAll('[data-i]').forEach((cb) => cb.addEventListener('change', () => {
+    const i = Number(cb.dataset.i);
+    if (cb.checked) chosen.add(i); else chosen.delete(i);
+  }));
+  el.querySelector('#care-apply')?.addEventListener('click', async () => {
+    let n = 0;
+    for (const i of chosen) {
+      const s = swaps[i];
+      const cur = deck.cards[s.out.name] || 0;
+      if (!cur) continue;
+      if (cur > 1) deck.cards[s.out.name] = cur - 1; else delete deck.cards[s.out.name];
+      if (deck.reasons && cur <= 1) delete deck.reasons[s.out.name];
+      deck.cards[s.in.name] = (deck.cards[s.in.name] || 0) + 1;
+      n++;
+    }
+    await saveDeck(deck);
+    toast(`Applied ${n} swap${n === 1 ? '' : 's'}`);
+    ctx.refresh();
+  });
+  // Cards EDHREC players run for this goal that you don't have free: worth picking up.
+  const edh = ctx.data?.edh;
+  const look = el.querySelector('#care-look');
+  if (!edh) { look.textContent = ctx.data ? 'No EDHREC data for this commander.' : 'Loading…'; return; }
+  const free = freeByKey(deck.id);
+  const inDeck = new Set(Object.keys(deck.cards).map(nameKey));
+  const names = [...edh.cards.values()]
+    .filter((c) => !inDeck.has(nameKey(c.name)) && !(free.get(nameKey(c.name)) > 0) && nameKey(c.name) !== nameKey(deck.commander) && !/basic/i.test(c.list || ''))
+    .sort((a, b) => b.incl - a.incl).slice(0, 120).map((c) => c.name);
+  const goal = v.careGoal;
+  ensureCards(names).then(() => {
+    if (v.careGoal !== goal || !look.isConnected) return;
+    const picks = names.map((n) => ({ n, card: lookup(n), e: edh.cards.get(nameKey(n)) }))
+      .filter((x) => x.card && fitsDeck(x.card, bctx) && goalValue(x.card, goal, bctx) > 0).slice(0, 8);
+    look.innerHTML = picks.length ? picks.map((x) => `<div class="add-row">
+        ${x.card.img_small ? `<img src="${esc(x.card.img_small)}" alt="" data-card="${esc(x.n)}">` : ''}
+        <div class="nm"><div><a href="javascript:void 0" data-card="${esc(x.n)}">${esc(x.n)}</a></div><small>in ${Math.round(x.e.incl * 100)}% of decks${x.card.price ? ` · $${esc(x.card.price)}` : ''}</small></div>
+      </div>`).join('') + '<p class="small muted">Not in your collection (or already used in other decks).</p>'
+      : 'Nothing else EDHREC suggests for this goal.';
+  }).catch(() => { look.textContent = 'Couldn’t load suggestions.'; });
 }
 
 const buyCount = (deck) => Object.values(deck.toBuy || {}).reduce((a, b) => a + b, 0);

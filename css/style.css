@@ -317,3 +317,6 @@ textarea.paste { width: 100%; min-height: 160px; font: 13px/1.4 ui-monospace, SF
   :root:not([data-theme="light"]) .role-finisher { color: #c39bff; }
 }
 .tile .tile-actions .btn.icon { font-size: .85rem; }
+.care-swap { display: grid; grid-template-columns: auto 1fr 1fr; gap: 8px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .88rem; }
+.care-swap img { width: 40px; border-radius: 3px; cursor: pointer; flex: none; }
+.care-out, .care-in { display: flex; gap: 6px; min-width: 0; }

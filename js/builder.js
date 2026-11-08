@@ -548,6 +548,74 @@ export function swapOptions(card, pool, deckCards, ctx, limit = 12) {
     .slice(0, limit);
 }
 
+// ---------- Deck Care: goal-directed swaps from your own cards ----------
+
+export const CARE_GOALS = {
+  mana: { label: 'Smoother mana', blurb: 'More dual lands and cheap ramp, so you hit your colors and cast spells on time.' },
+  draw: { label: 'More card draw', blurb: 'More ways to refill your hand, preferring repeatable draw engines.' },
+  answers: { label: 'Better answers', blurb: 'More removal and board wipes to deal with problem permanents.' },
+};
+
+const isEngine = (card) => /whenever[^.]*draw|at the beginning of[^.]*draw|draw a card for each/i.test(card.oracle_text || '');
+
+/** Does a card serve this goal, and how strongly (0 = no)? */
+export function goalValue(card, goal, ctx) {
+  const i = info(card);
+  if (goal === 'mana') {
+    if (i.land) {
+      if (i.basic) return 0;
+      const on = (card.produced_mana || []).filter((c) => ctx.colorSet.has(c)).length || (i.fetch && ctx.colors.length > 1 ? ctx.colors.length : 0);
+      return ctx.colors.length > 1 && on >= 2 ? 3 : 0;
+    }
+    return i.roles.has('ramp') && card.cmc <= 3 ? 2 : 0;
+  }
+  if (i.land) return 0;
+  if (goal === 'draw') return i.roles.has('draw') ? (isEngine(card) ? 3 : 1.5) : 0;
+  if (goal === 'answers') return i.roles.has('wipe') ? 2.5 : i.roles.has('removal') ? 2 : 0;
+  return 0;
+}
+
+/**
+ * Suggest up to `max` swaps toward a goal using free cards you own.
+ * Returns [{ out: {name, card, score}, in: {name, card, score, edh}, why }]
+ */
+export function deckCare(goal, { deckCards, pool, ctx, lookupCard, protect = new Set(), max = 8 }) {
+  const adds = pool
+    .filter((e) => !e.buy && e.available > 0 && !deckCards[e.name] && eligible(e.card, ctx))
+    .map((e) => ({ name: e.name, card: e.card, v: goalValue(e.card, goal, ctx), ...scoreCard(e.card, ctx) }))
+    .filter((x) => x.v > 0)
+    .sort((a, b) => b.v * 40 + b.s - (a.v * 40 + a.s));
+  const inDeck = Object.keys(deckCards).map((n) => ({ name: n, card: lookupCard(n) })).filter((x) => x.card);
+  // Cuts: cards that don't serve the goal, weakest first; never the commander's combo pieces or protected cards.
+  const nonlandCuts = inDeck
+    .filter((x) => !info(x.card).land && !protect.has(x.name) && goalValue(x.card, goal, ctx) === 0)
+    .map((x) => ({ ...x, s: scoreCard(x.card, ctx).s - (x.card.cmc >= 5 && goal === 'mana' ? 15 : 0) }))
+    .sort((a, b) => a.s - b.s);
+  // Basic lands to trade for duals: the color with the most sources relative to its share of pips.
+  const basics = inDeck.filter((x) => info(x.card).basic);
+  const swaps = [];
+  for (const a of adds) {
+    if (swaps.length >= max) break;
+    let out = null;
+    if (info(a.card).land) {
+      // Take from whichever basic you have the most of (left after earlier swaps).
+      const left = (x) => (deckCards[x.name] || 0) - swaps.filter((s) => s.out.name === x.name).length;
+      const b = [...basics].sort((p, q) => left(q) - left(p))[0];
+      if (b && left(b) > 0) out = { name: b.name, card: b.card, s: 0 };
+    } else {
+      out = nonlandCuts.find((c) => !swaps.some((s) => s.out.name === c.name) && c.s < a.s + 25);
+    }
+    if (!out) continue;
+    const why = goal === 'mana'
+      ? (info(a.card).land ? `Makes ${ctx.colors.length > 1 ? 'two or more of your colors' : 'your color'} instead of one.` : 'Cheap ramp, so the rest of your hand comes down sooner.')
+      : goal === 'draw'
+        ? (isEngine(a.card) ? 'A repeatable draw engine.' : 'Extra card draw.')
+        : info(a.card).roles.has('wipe') ? 'A board wipe for when you fall behind.' : 'Removal for problem permanents.';
+    swaps.push({ out, in: { name: a.name, card: a.card, score: a.s, edh: a.edh }, why });
+  }
+  return swaps;
+}
+
 // ---------- how many usable spells your pile has for a commander ----------
 
 /** Non-land slots in a Commander deck (100 − commander − 36 lands). */
