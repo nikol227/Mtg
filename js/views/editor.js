@@ -12,6 +12,7 @@ import { esc, manaHTML, pipsHTML, tileHTML, thumbRowHTML, toast, openModal, clos
 import { showCard } from './card-modal.js';
 import { findSynergies, deckCautions, planSummary } from '../synergy.js';
 import { library, shuffle, handStats, verdict, landOdds } from '../hand.js';
+import { deckTitle } from '../names.js';
 
 const SECTIONS = ['Creature', 'Planeswalker', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Battle', 'Other', 'Land'];
 const SECTION_LABEL = { Creature: 'Creatures', Planeswalker: 'Planeswalkers', Instant: 'Instants', Sorcery: 'Sorceries', Artifact: 'Artifacts', Enchantment: 'Enchantments', Battle: 'Battles', Other: 'Other', Land: 'Lands' };
@@ -35,7 +36,10 @@ export function render(root, id) {
   const bracket = BRACKETS.find((b) => b.n === deck.bracket);
   root.innerHTML = `
     <div class="row spread">
-      <input class="deck-name" id="deck-name" value="${esc(deck.name)}" aria-label="Deck name">
+      <span class="row" style="gap:4px;flex:1 1 320px;min-width:0">
+        <input class="deck-name" id="deck-name" value="${esc(deck.name)}" aria-label="Deck name">
+        <button class="btn icon" id="reroll-name" type="button" title="Generate a new unique title" aria-label="Generate a new title">🎲</button>
+      </span>
       <div class="row">
         <button class="btn small" id="fill" title="Add the best free cards until the deck reaches 100">Auto-fill</button>
         <button class="btn small" id="rebuild" title="Throw this list away and build again">Rebuild</button>
@@ -134,6 +138,19 @@ function makeCtx(root, deck) {
 }
 
 function bindHeader(root, deck, ctx) {
+  root.querySelector('#reroll-name').addEventListener('click', async () => {
+    const entries = deckEntries(deck);
+    deck.titleSeed = (deck.titleSeed || 0) + 1;
+    deck.name = deckTitle({
+      commander: deck.commander,
+      colors: deck.colors,
+      groups: findSynergies(entries),
+      seed: `${deck.id}:${deck.titleSeed}`,
+      taken: new Set([...state.decks.values()].filter((d) => d.id !== deck.id).map((d) => d.name).concat(deck.name)),
+    });
+    root.querySelector('#deck-name').value = deck.name;
+    await saveDeck(deck);
+  });
   root.querySelector('#deck-name').addEventListener('change', async (e) => { deck.name = e.target.value.trim() || deck.name; await saveDeck(deck); toast('Renamed'); });
   root.querySelector('#view-mode').addEventListener('click', (e) => {
     const b = e.target.closest('[data-mode]'); if (!b) return;

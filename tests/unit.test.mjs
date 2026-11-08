@@ -12,6 +12,7 @@ import { nameKey, colorMask } from '../js/cards.js';
 import { fetchCollection } from '../js/scryfall.js';
 import { findSynergies, deckCautions, planSummary } from '../js/synergy.js';
 import { library, shuffle, handStats, verdict, landOdds } from '../js/hand.js';
+import { deckTitle, commanderParts } from '../js/names.js';
 import { bulkPile } from './fixtures.mjs';
 
 const MANABOX = `Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall ID,Purchase price,Misprint,Altered,Condition,Language,Purchase price currency
@@ -335,6 +336,21 @@ test('deck value and cost of cards to buy', () => {
   const deck = { commander: 'Cmd', cards: { A: 2, B: 1, C: 1, Forest: 30 }, toBuy: { B: 1 } };
   assert.deepEqual(deckCost(deck, look), { total: 17, toBuy: 4, toBuyCount: 1, unpriced: 1 });
   assert.deepEqual(deckCost(deck, look, { commanderOwned: false }), { total: 17, toBuy: 14, toBuyCount: 2, unpriced: 1 });
+});
+
+test('unique generated deck titles', () => {
+  assert.deepEqual(commanderParts('Mabel, Heir to Cragflame'), { short: 'Mabel', place: 'Cragflame' });
+  assert.deepEqual(commanderParts('Beza, the Bounding Spring'), { short: 'Beza', place: 'Bounding Spring' });
+  const groups = [{ key: 'targeting' }, { key: 'tribe:Mouse' }];
+  const taken = new Set();
+  for (let s = 0; s < 25; s++) {
+    const t = deckTitle({ commander: 'Mabel, Heir to Cragflame', colors: ['R', 'W'], groups, seed: s, taken });
+    assert.ok(!taken.has(t), `unique: ${t}`);
+    assert.ok(t.length > 8 && !/undefined|null/.test(t), t);
+    taken.add(t);
+  }
+  const a = deckTitle({ commander: 'Mabel, Heir to Cragflame', colors: ['R', 'W'], groups, seed: 7 });
+  assert.equal(deckTitle({ commander: 'Mabel, Heir to Cragflame', colors: ['R', 'W'], groups, seed: 7 }), a, 'same seed, same title');
 });
 
 test('export text uses set and collector number', () => {

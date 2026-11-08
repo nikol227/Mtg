@@ -199,7 +199,7 @@ details summary { cursor: pointer; }
 .editor { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
 .editor-side .stat { min-width: 0; flex: 1; padding: 8px 10px; }
 .editor-side { position: sticky; top: 70px; max-height: calc(100vh - 86px); overflow: auto; }
-.deck-name { font-size: 1.3rem; font-weight: 700; border: 1px solid transparent; background: transparent; padding: 4px 6px; margin-left: -6px; width: min(100%, 520px); }
+.deck-name { font-size: 1.3rem; font-weight: 700; border: 1px solid transparent; background: transparent; padding: 4px 6px; margin-left: -6px; width: min(100%, 520px); min-width: 0; flex: 1; }
 .deck-name:hover, .deck-name:focus { border-color: var(--border); background: var(--surface); }
 .section-head { display: flex; align-items: baseline; gap: 8px; margin: 18px 0 8px; }
 .section-head h3 { margin: 0; }

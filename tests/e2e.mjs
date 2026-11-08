@@ -136,6 +136,12 @@ assert.equal(await page.inputValue('#set-lands'), '37');
 if (shots) await page.screenshot({ path: `${shots}/3-build.png`, fullPage: true });
 await page.click('#go');
 await page.waitForSelector('#deck-main .thumb-row');
+// A unique title was generated (name box left blank), and the dice rerolls it
+const title1 = await page.inputValue('#deck-name');
+assert.ok(title1.length > 8 && !/undefined|null/.test(title1), `generated title: ${title1}`);
+await page.click('#reroll-name');
+const title2 = await page.inputValue('#deck-name');
+assert.notEqual(title2, title1, 'reroll gives a new title');
 assert.match(await page.textContent('#size-label'), /^100 \/ 100 cards/);
 await page.waitForSelector('.plan-summary');
 assert.match(await page.textContent('#side'), /The idea[\s\S]*Early turns[\s\S]*How it wins/);

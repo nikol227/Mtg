@@ -4,6 +4,8 @@ import { popularCommanders, coverage } from '../data.js';
 import { commanderPage, BRACKETS, edhrecUrl } from '../edhrec.js';
 import { buildFor, safe, previewFor, DEFAULT_SETTINGS } from '../engine.js';
 import { showCard } from './card-modal.js';
+import { deckTitle } from '../names.js';
+import { findSynergies } from '../synergy.js';
 import { nameKey, edhrecSlug } from '../cards.js';
 import { esc, pipsHTML, toast, debounce } from '../ui.js';
 
@@ -249,16 +251,26 @@ async function refreshFit(root) {
   el.onclick = (e) => { const c = e.target.closest('[data-card]'); if (c) showCard(c.dataset.card); };
 }
 
-function defaultName() {
-  return `${v.commander.split(' // ')[0].split(',')[0]}${v.themeLabel ? ` ${v.themeLabel}` : ''}`;
+/** A unique title for a freshly built deck, from its commander, colors and main synergy. */
+function generatedTitle(res) {
+  const entries = Object.entries(res.cards).map(([name, count]) => ({ name, count, card: lookup(name) })).filter((x) => x.card);
+  entries.unshift({ name: res.commander.name, count: 1, card: res.commander, commander: true });
+  return deckTitle({
+    commander: res.commander.name,
+    colors: res.commander.color_identity,
+    groups: findSynergies(entries),
+    seed: Date.now(),
+    taken: new Set([...state.decks.values()].map((d) => d.name)),
+  });
 }
+
 
 function renderGo(root) {
   const el = root.querySelector('#step-go');
   const owned = (freeByKey().get(nameKey(v.commander)) || 0) > 0;
   el.innerHTML = `${stepTitle(4, 'Build it')}
     <div class="row">
-      <input type="text" id="deck-name" value="${esc(v.name || defaultName())}" aria-label="Deck name" style="flex:1 1 260px">
+      <input type="text" id="deck-name" value="${esc(v.name)}" placeholder="Leave blank for a unique generated title" aria-label="Deck name" style="flex:1 1 260px">
       <button class="btn primary" id="go">Build deck</button>
     </div>
     <p class="small muted" style="margin-top:8px">
@@ -277,7 +289,7 @@ function renderGo(root) {
       const res = await buildFor({ commanderName: v.commander, slug: v.slug, theme: v.theme, themeLabel: v.themeLabel, bracket: v.bracket, settings: v.settings });
       const deck = {
         id: newDeckId(),
-        name: (el.querySelector('#deck-name').value || defaultName()).trim(),
+        name: el.querySelector('#deck-name').value.trim() || generatedTitle(res),
         format: 'commander',
         colors: res.commander.color_identity,
         commander: res.commander.name,
