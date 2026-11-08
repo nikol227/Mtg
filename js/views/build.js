@@ -128,7 +128,7 @@ const colorLabel = (colors) => (colors.length ? colors.join('') : 'colorless');
 
 /** Warning chip when the pile can't fill the 63 non-land slots. */
 function thinHTML(x) {
-  if (x.thin.level === 'ok') return '<span class="d"><span class="tag ok">Enough cards for a full deck</span></span>';
+  if (x.thin.level === 'ok') return '<span class="d"><span class="tag ok">✓ Enough for a full deck</span></span>';
   const cls = x.thin.level === 'thin' ? 'warn-chip' : 'tag';
   const lead = x.thin.level === 'thin' ? 'Likely too thin to build: ' : '';
   return `<span class="d"><span class="${cls}" title="Missing slots are filled with EDHREC recommendations to buy">⚠ ${lead}needs ~${x.thin.needed} more ${colorLabel(x.colors)} spells</span></span>`;
