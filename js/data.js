@@ -80,6 +80,12 @@ export function comboUrl(c) { return `https://commanderspellbook.com/combo/${c.i
 
 // ---------- commanders ----------
 
+// EDHREC image URLs embed the Scryfall card id; load the image from Scryfall's CDN instead.
+function scryfallImage(url) {
+  const m = url && url.match(/\/front\/([0-9a-f])\/([0-9a-f])\/([0-9a-f-]{36})/);
+  return m ? `https://cards.scryfall.io/small/front/${m[1]}/${m[2]}/${m[3]}.jpg` : null;
+}
+
 let cmdIndex = null;
 export async function popularCommanders() {
   if (cmdIndex) return cmdIndex;
@@ -93,7 +99,7 @@ export async function popularCommanders() {
       decks: c.d,
       rank: rank + 1,
       colors: c.ci.split('').filter(Boolean),
-      img: c.img,
+      img: scryfallImage(c.img),
       themes: c.th.map(([slug, label, count]) => ({ slug, label, count })),
       cards: c.c.map(([i, incl, syn]) => ({ name: d.names[i], key: nameKey(d.names[i]), incl: incl / 100, syn: syn / 100 })),
     })),

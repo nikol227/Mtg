@@ -80,6 +80,7 @@ function expand(raw, slug, variant) {
     slug,
     variant,
     numDecks: raw.numDecks,
+    variantLabel: variant ? (BRACKETS.find((b) => b.slug === variant)?.label || raw.themes.find((t) => t[0] === variant)?.[1] || variant) : null,
     colorIdentity: raw.ci,
     img: raw.img,
     themes: raw.themes.map(([s, label, count]) => ({ slug: s, label, count })),

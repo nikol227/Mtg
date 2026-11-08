@@ -276,3 +276,5 @@ textarea.paste { width: 100%; min-height: 160px; font: 13px/1.4 ui-monospace, SF
 .cmd-pick .d .tag { margin-left: 4px; }
 .cmd-pick > span { display: flex; flex-direction: column; gap: 3px; }
 .cmd-pick .d { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.img-ph { width: 60px; aspect-ratio: 488/680; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border); font-size: .6rem; padding: 3px; overflow: hidden; cursor: pointer; display: inline-block; }
+.img-ph.missing { outline: 2px dashed var(--warn); outline-offset: 1px; }

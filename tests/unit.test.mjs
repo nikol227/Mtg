@@ -191,5 +191,5 @@ test('fetchCollection batches by 75 and retries 429', async () => {
   assert.equal(cards.length, 159);
   assert.equal(notFound.length, 1);
   assert.deepEqual(progress, [[75, 160], [150, 160], [160, 160]]);
-  assert.equal(calls, 4);
+  assert.equal(calls, 4); // one 429 retried
 });

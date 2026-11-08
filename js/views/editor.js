@@ -87,7 +87,7 @@ function makeCtx(root, deck) {
       const combosById = new Map((ctx.combos()?.complete || []).map((c) => [c.id, c]));
       const r = { ...(ctx.reason(name) || {}) };
       if (ctx.combos()) r.combos = ctx.combos().complete.filter((c) => c.keys.includes(nameKey(name))).map((c) => c.id);
-      return explain(name, r, { commanderName: deck.commander, numDecks: deck.numDecks || ctx.data?.edh?.numDecks || 0, combosById, basic: card && info(card).basic });
+      return explain(name, r, { commanderName: deck.commander, variantLabel: deck.edhVariantLabel, numDecks: deck.numDecks || ctx.data?.edh?.numDecks || 0, combosById, basic: card && info(card).basic });
     },
     refresh() {
       ctx.avail = availabilityFn(deck.id);
@@ -279,14 +279,14 @@ function renderPlan(el, deck, ctx) {
   const plan = gamePlan(deck, lookup, { edh: ctx.data.edh, combosInDeck: combos?.complete || [], themeLabel: deck.themeLabel, bracket: deck.bracket });
   el.innerHTML = plan.map((p) => `<div class="plan-step"><h3>${esc(p.title)}</h3><p>${esc(p.text)}</p>${p.cards.length ? `<div class="thumbs">${p.cards.slice(0, 5).map((n) => {
     const c = lookup(n);
-    return `<img src="${esc(c?.img_small || cardImageURL(n))}" alt="${esc(n)}" title="${esc(n)}" data-card="${esc(n)}" loading="lazy">`;
+    return c?.img_small ? `<img src="${esc(c.img_small)}" alt="${esc(n)}" title="${esc(n)}" data-card="${esc(n)}" loading="lazy">` : '';
   }).join('')}</div>` : ''}</div>`).join('')
     + `<p class="small muted">Generated from this deck's cards, EDHREC data and Commander Spellbook combos.</p>`;
 }
 
 function comboHTML(c, { missing = null, ownMissing = false } = {}) {
   return `<div class="combo">
-    <div class="combo-cards">${c.cards.map((n) => `<img src="${esc(lookup(n)?.img_small || cardImageURL(n))}" alt="${esc(n)}" title="${esc(n)}" data-card="${esc(n)}" loading="lazy" class="${missing && nameKey(n) === missing ? 'missing' : ''}">`).join('')}</div>
+    <div class="combo-cards">${c.cards.map((n) => (lookup(n)?.img_small ? `<img src="${esc(lookup(n).img_small)}" alt="${esc(n)}" title="${esc(n)}" data-card="${esc(n)}" loading="lazy" class="${missing && nameKey(n) === missing ? 'missing' : ''}">` : `<span class="img-ph${missing && nameKey(n) === missing ? ' missing' : ''}" data-card="${esc(n)}">${esc(n)}</span>`)).join('')}</div>
     <div class="small"><b>${esc(c.produces.slice(0, 3).join(' · '))}</b></div>
     <div class="small muted">${cardLinks(c.cards)}${c.requires.length ? ` · also needs: ${esc(c.requires.join(', '))}` : ''}</div>
     ${missing ? `<div class="small">${ownMissing ? '<span class="tag ok">Missing piece is in your collection</span>' : '<span class="tag">Missing piece not owned</span>'}</div>` : ''}
@@ -300,6 +300,12 @@ function renderCombos(el, deck, ctx) {
   if (!combos) { el.innerHTML = '<p class="muted">Combo data (data/combos.json) could not be loaded.</p>'; return; }
   const free = freeByKey(deck.id);
   const allowed = combos.oneAway.filter((x) => x.combo.minBracket <= deck.bracket).slice(0, 25);
+  // Fetch data for pieces you don't own in one batched request, then redraw with their images.
+  const unknown = allowed.map((x) => x.missingName).filter((n) => !lookup(n));
+  if (unknown.length && !ctx.fetchedMissing) {
+    ctx.fetchedMissing = true;
+    ensureCards(unknown).then(() => { if (v.side === 'combos' && document.getElementById('side-body')) renderCombos(document.getElementById('side-body'), deck, ctx); }).catch(() => {});
+  }
   el.innerHTML = `
     <h3>In this deck (${combos.complete.length})</h3>
     ${combos.complete.length ? combos.complete.slice(0, 30).map((c) => comboHTML(c)).join('') : '<p class="small muted">No complete combos yet.</p>'}
@@ -318,7 +324,7 @@ function renderStats(el, deck, ctx) {
   const labels = ['0', '1', '2', '3', '4', '5', '6', '7+'];
   const pipTotal = COLORS.reduce((a, c) => a + s.pips[c], 0) || 1;
   const srcMax = Math.max(1, ...COLORS.map((c) => s.sources[c]));
-  const used = COLORS.filter((c) => s.pips[c] > 0 || s.sources[c] > 0);
+  const used = COLORS.filter((c) => deck.colors.includes(c));
   const typeRows = SECTIONS.filter((t) => s.types[t]).map((t) => `<span>${SECTION_LABEL[t]}</span><span>${s.types[t]}</span>`).join('');
   const bctx = ctx.builderCtx();
   const gcs = Object.keys(deck.cards).filter((n) => { const c = lookup(n); return c && isGameChanger(c, bctx); });

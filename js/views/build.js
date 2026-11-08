@@ -43,7 +43,7 @@ async function rankedCommanders() {
   for (const e of ownedCommanders(pool())) {
     const k = info(e.card).key;
     const x = out.get(k);
-    if (x) { x.cov.ownCommander = true; x.card = e.card; continue; }
+    if (x) { x.cov.ownCommander = true; x.card = e.card; x.img = e.card.img_small || x.img; continue; }
     out.set(k, { name: e.name, slug: edhrecSlug(e.name), colors: e.card.color_identity, img: e.card.img_small || e.card.img, card: e.card, decks: 0, rank: null, themes: [], cov: { owned: 0, considered: 0, pct: null, ownCommander: true, topOwned: [] } });
   }
   const list = [...out.values()];
@@ -66,7 +66,7 @@ function renderCommanders(root) {
       </div>
       <input type="search" id="cmd-q" placeholder="Search any commander…" value="${esc(v.query)}" style="flex:1 1 240px">
     </div>
-    <div class="picks" id="cmds"><span><span class="spinner"></span> Comparing your collection with 1,000 popular commanders…</span></div>
+    <div class="picks" id="cmds"><span><span class="spinner"></span> Comparing your collection with 900 popular commanders…</span></div>
     <div id="cmd-more"></div>`;
   const draw = async () => {
     const all = await rankedCommanders();
@@ -200,6 +200,7 @@ function renderGo(root) {
         combos: res.combos,
         notes: res.notes,
         numDecks: res.ctx.edh?.numDecks || 0,
+        edhVariantLabel: res.ctx.edh?.variantLabel || null,
         created: Date.now(),
       };
       await saveDeck(deck);

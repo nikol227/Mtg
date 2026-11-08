@@ -10,7 +10,7 @@ It is a static site with no build step and no server. Your collection and decks 
 | Source | Used for | How |
 |---|---|---|
 | [Scryfall](https://scryfall.com) | Card data, images, prices, Game Changers list | Live, from the browser (cached) |
-| [EDHREC](https://edhrec.com) | Which cards each commander's decks play (inclusion %, synergy), strategies, power-bracket pages | Live, from the browser (cached 7 days). The 1,000 most popular commanders are also summarized weekly in `data/commanders.json`, so ranking against your collection is instant |
+| [EDHREC](https://edhrec.com) | Which cards each commander's decks play (inclusion %, synergy), strategies, power-bracket pages | Live, from the browser (cached 7 days). The ~900 most popular commanders are also summarized weekly in `data/commanders.json`, so ranking against your collection is instant |
 | [Commander Spellbook](https://commanderspellbook.com) | ~117,000 Commander-legal combos | Downloaded weekly into `data/combos.json`. Spellbook's API doesn't accept requests from other websites, so the browser can't call it directly |
 
 `scripts/update-data.mjs` builds the `data/` files. The **Update combo & commander data** GitHub Action (`.github/workflows/update-data.yml`) runs it every Monday and commits any changes. You can also run it by hand from the Actions tab.
@@ -18,7 +18,7 @@ It is a static site with no build step and no server. Your collection and decks 
 ## Features
 
 - **Import:** ManaBox CSV (matched by Scryfall ID). Most other scanner CSVs work too, and so does a pasted list (`1 Sol Ring`, `1x Sol Ring (C21) 263`, `Sol Ring`). Large piles (10k+) are fine.
-- **Commander finder:** 1,000 popular commanders plus every legend you own, ranked by how many of each commander's 100 most-played cards (on EDHREC) you have free. Each tile also shows whether you own the commander itself.
+- **Commander finder:** 900 popular commanders plus every legend you own, ranked by how many of each commander's 100 most-played cards (on EDHREC) you have free. Each tile also shows whether you own the commander itself.
 - **Strategy and power bracket:** pick one of the EDHREC strategies for that commander (Tokens, +1/+1 Counters…) and a bracket from 1 (Exhibition) to 5 (cEDH). The bracket controls:
   - how many Game Changers can be included (none in brackets 1–2, up to 3 in bracket 3);
   - how many combos are added on purpose, and how strong they can be (using Spellbook's own bracket tags);

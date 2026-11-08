@@ -1,9 +1,11 @@
 // Scryfall API client. Uses /cards/collection (75 identifiers per request)
-// and respects Scryfall's rate-limit guidance (~10 requests/second max).
+// Scryfall limits this endpoint to about 2 requests/second, so batches are spaced out,
+// and 429 responses are retried after the server's Retry-After delay.
 
 const API = 'https://api.scryfall.com';
 const BATCH = 75;
-const DELAY_MS = 110;
+const DELAY_MS = 550;
+const MAX_TRIES = 7;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -38,13 +40,18 @@ async function postWithRetry(url, body, fetchImpl, signal, attempt = 0) {
       signal,
     });
   } catch (e) {
-    if (e.name === 'AbortError' || attempt >= 4) throw e;
+    if (e.name === 'AbortError' || attempt >= MAX_TRIES - 1) throw e;
     await sleep(1000 * 2 ** attempt);
     return postWithRetry(url, body, fetchImpl, signal, attempt + 1);
   }
   if (res.status === 429 || res.status >= 500) {
-    if (attempt >= 4) throw new Error(`Scryfall returned ${res.status} after several retries.`);
-    await sleep(1000 * 2 ** attempt);
+    if (attempt >= MAX_TRIES - 1) {
+      throw new Error(res.status === 429
+        ? 'Scryfall is limiting requests right now (too many in a short time). Wait a minute and import again; cards already looked up are cached.'
+        : `Scryfall returned ${res.status} after several retries.`);
+    }
+    const retryAfter = Number(res.headers?.get?.('Retry-After'));
+    await sleep(retryAfter > 0 ? retryAfter * 1000 : Math.min(30000, 1500 * 2 ** attempt));
     return postWithRetry(url, body, fetchImpl, signal, attempt + 1);
   }
   if (!res.ok) {

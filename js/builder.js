@@ -342,14 +342,14 @@ export function reasonFor(card, ctx, combosInDeck = []) {
 }
 
 /** One readable sentence explaining why a card is in the deck. */
-export function explain(name, reason, { commanderName = 'this commander', numDecks = 0, combosById = new Map(), basic = false } = {}) {
+export function explain(name, reason, { commanderName = 'this commander', variantLabel = null, numDecks = 0, combosById = new Map(), basic = false } = {}) {
   if (basic) return 'Basic land, added to make the colors in your mana costs.';
   if (!reason) return '';
   const parts = [];
   if (reason.incl != null) {
     const pct = Math.round(reason.incl * 100);
     const syn = Math.round(reason.syn * 100);
-    parts.push(`Played in ${pct}% of ${numDecks ? `${numDecks.toLocaleString()} ` : ''}${commanderName} decks on EDHREC${syn >= 5 ? ` (synergy +${syn}%: much more common here than in other decks of these colors)` : syn <= -5 ? ' (a general staple rather than a synergy pick)' : ''}.`);
+    parts.push(`Played in ${pct}% of ${numDecks ? `${numDecks.toLocaleString()} ` : ''}${commanderName} decks on EDHREC${variantLabel ? ` (${variantLabel} page)` : ''}${syn >= 5 ? ` (synergy +${syn}%: much more common here than in other decks of these colors)` : syn <= -5 ? ' (a general staple rather than a synergy pick)' : ''}.`);
   } else if (reason.theme) {
     parts.push(`Fits ${commanderName}'s abilities.`);
   } else {
@@ -384,7 +384,7 @@ export function gamePlan(deck, lookup, { edh = null, combosInDeck = [], themeLab
   const firstSentence = cmd ? (cmd.oracle_text || '').split(/(?<=\.)\s/)[0] : '';
   plan.push({
     title: 'The idea',
-    text: `${cmd ? cmd.name : 'Your commander'} leads this deck${themeLabel ? `, built around the ${themeLabel} strategy` : ''}. ${firstSentence ? `Its key text: “${firstSentence}”` : ''} ${edh?.numDecks ? `The list leans on what ${edh.numDecks.toLocaleString()} EDHREC players run with this commander, limited to cards you own.` : ''} Target power: bracket ${bracket}.`.replace(/\s+/g, ' ').trim(),
+    text: `${cmd ? cmd.name : 'Your commander'} leads this deck${themeLabel ? `, built around the ${themeLabel} strategy` : ''}. ${firstSentence ? `Its key text: “${firstSentence}”` : ''} ${edh?.numDecks ? `Cards were chosen from what ${edh.numDecks.toLocaleString()} ${edh.variantLabel ? `${edh.variantLabel} ` : ''}decks for this commander on EDHREC play, limited to cards you own.` : ''} Target power: bracket ${bracket}.`.replace(/\s+/g, ' ').trim(),
     cards: cmd ? [cmd.name] : [],
   });
   const ramp = withRole('ramp').filter((x) => x.card.cmc <= 3);

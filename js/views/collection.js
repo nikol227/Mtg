@@ -17,7 +17,7 @@ export function render(root) {
   root.innerHTML = `
     ${totals.total ? '' : `<div class="empty">
       <h1>Turn your bulk into decks</h1>
-      <p class="muted">Scan your cards with ManaBox, export a CSV, and drop it below (or paste a list). Then pick a commander: we rank 1,000 popular commanders by how much of their deck you already own.</p>
+      <p class="muted">Scan your cards with ManaBox, export a CSV, and drop it below (or paste a list). Then pick a commander: we rank 900 popular commanders by how much of their deck you already own.</p>
     </div>`}
     <section class="panel" id="import-panel">${importPanel(totals)}</section>
     ${totals.total ? `<section class="panel" id="browser"></section>` : ''}
