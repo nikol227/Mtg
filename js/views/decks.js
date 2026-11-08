@@ -34,7 +34,7 @@ function tile(d) {
       <div><b>${esc(d.name)}</b></div>
       <div class="small muted">${esc(d.commander || '')}${d.themeLabel ? ` · ${esc(d.themeLabel)}` : ''}</div>
       <div>${pipsHTML(deckColors(d, lookup))} <span class="small muted">Bracket ${bracket.n} · ${esc(bracket.label)}</span></div>
-      <div>${status}</div>
+      <div>${status}${Object.keys(d.toBuy || {}).length ? ` <span class="tag buy">${Object.values(d.toBuy).reduce((a, b) => a + b, 0)} to buy</span>` : ''}</div>
     </div>
   </a>`;
 }

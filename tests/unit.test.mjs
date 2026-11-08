@@ -169,6 +169,31 @@ test('game plan and upgrades', () => {
   assert.deepEqual(up.swaps.map((s) => [s.out.name, s.in.entry.name]), [['G Creature 1-0', 'Elf Lord']]);
 });
 
+test('when your collection runs out, recommended cards to buy fill the gap instead of lands', () => {
+  const pool = makePool(0);
+  const own = ['G Creature 1-0', 'G Creature 2-0', 'W Removal 2', 'G Draw 3'];
+  for (const e of pool) if (own.includes(e.name)) e.available = 1;
+  const cmd = find(pool, 'Elf Queen');
+  const first = buildDeck({ pool, commander: cmd });
+  assert.equal(first.shortfall, 63 - own.length, 'reports how many spell slots your cards could not fill');
+  // Offer every other G/W spell as a recommended buy (like engine.recommendedToBuy does from EDHREC).
+  const buys = makePool(1).filter((e) => !own.includes(e.name) && /^[GW] /.test(e.name)).map((e) => ({ ...e, buy: true }));
+  buys.find((e) => e.name === 'G Creature 6-3').card.price = '40.00'; // expensive: should be skipped
+  const res = buildDeck({ pool: [...pool, ...buys], commander: cmd });
+  const lookup = (n) => find(pool, n);
+  for (const n of own) assert.equal(res.cards[n], 1, `owned ${n} used`);
+  for (const n of own) assert.ok(!res.toBuy[n], `owned ${n} not marked to buy`);
+  const nonland = Object.entries(res.cards).filter(([n]) => !info(lookup(n)).land).reduce((a, [, c]) => a + c, 0);
+  assert.equal(nonland, 63, 'all 63 spell slots filled');
+  assert.equal(Object.keys(res.toBuy).length, 63 - own.length);
+  assert.ok(!res.toBuy['G Creature 6-3'], 'pricey card avoided while cheaper ones exist');
+  assert.match(res.notes[0], /59 recommended cards you don't own were added/);
+  assert.equal(deckSize({ cards: res.cards, commander: res.commander }), 100);
+  assert.equal(explain('G Ramp', res.reasons['G Ramp'], {}).split('.')[0], 'Not in your collection: recommended to buy, because your own cards ran out');
+  const issues = validateDeck({ cards: res.cards, commander: res.commander, toBuy: res.toBuy }, lookup, (n) => (own.includes(n) ? 1 : 0));
+  assert.ok(!issues.some((i) => i.short && i.msg !== `${cmd.name}: not free in your collection (your commander).`), 'buy cards are not reported as missing');
+});
+
 test('export text uses set and collector number', () => {
   const pool = makePool();
   const lookup = (n) => find(pool, n);

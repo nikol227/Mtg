@@ -115,7 +115,7 @@ function pickCombos(pool, ctx, comboIndex, byKey) {
   const limit = ctx.rules.combos;
   if (!comboIndex || !limit) return [];
   const have = new Set();
-  for (const e of pool) if (e.available > 0 && eligible(e.card, ctx)) have.add(info(e.card).key);
+  for (const e of pool) if (!e.buy && e.available > 0 && eligible(e.card, ctx)) have.add(info(e.card).key);
   if (ctx.commanderKey) have.add(ctx.commanderKey);
   const { complete } = matchCombos(comboIndex, have, { mask: ctx.mask, bracket: ctx.bracket, commanderKey: ctx.commanderKey, includeTemplated: false });
   const scored = complete
@@ -147,7 +147,9 @@ function pickCombos(pool, ctx, comboIndex, byKey) {
 /**
  * Build or finish a Commander deck.
  * opts: { pool, commander (card), edh, bracket, gameChangers, comboIndex, locked: {name: count}, theme, themeLabel }
- * Returns { cards, commander, notes, reasons: {name: reason}, combos: [comboId] }
+ * Pool entries marked `buy: true` are recommended cards you don't own; they are only used
+ * once your own cards run out, and are returned in `toBuy`.
+ * Returns { cards, commander, notes, reasons: {name: reason}, combos: [comboId], toBuy: {name: count}, shortfall }
  */
 export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChangers = new Set(), comboIndex = null, locked = {}, theme = null, themeLabel = null }) {
   const ctx = makeContext({ commander, edh, bracket, gameChangers, theme, themeLabel });
@@ -193,8 +195,14 @@ export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChange
     if (i.land || !eligible(e.card, ctx) || e.available <= 0) continue;
     const cap = Math.min(e.available, i.anyNumber ? 30 : 1) - (deck.get(e.name) || 0);
     if (cap <= 0) continue;
-    cands.push({ e, i, base: scoreCard(e.card, ctx).s, cap, taken: 0, gc: isGameChanger(e.card, ctx) });
+    let base = scoreCard(e.card, ctx).s;
+    // Cards to buy: prefer cheap ones (you're filling gaps in a bulk deck, not buying staples).
+    if (e.buy) base -= Math.min(60, (Number(e.card.price) || 0) * 4);
+    cands.push({ e, i, base: Math.max(1, base), cap, taken: 0, gc: isGameChanger(e.card, ctx), buy: !!e.buy });
   }
+  const toBuy = {};
+  let shortfall = 0;
+  let ownedRanOut = false;
 
   const [crLo, crHi] = fmt.creatures;
   for (let step = 0; step < nonlandSlots; step++) {
@@ -204,6 +212,7 @@ export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChange
     let bestScore = -Infinity;
     for (const c of cands) {
       if (c.taken >= c.cap) continue;
+      if (c.buy !== ownedRanOut) continue; // your own cards first, then recommended buys
       if (c.gc && tally.gc >= ctx.rules.gameChangers) continue;
       let s = c.base;
       for (const [role, need] of Object.entries(fmt.roles)) {
@@ -218,9 +227,16 @@ export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChange
       if (s > bestScore) { bestScore = s; best = c; }
     }
     if (!best) {
-      notes.push(`Your collection only had ${tally.nonland} usable non-land cards in these colors, so the remaining ${nonlandTarget - tally.nonland} slots were filled with basic lands.`);
+      if (!ownedRanOut) {
+        ownedRanOut = true;
+        shortfall = nonlandSlots - step;
+        step--; // retry this slot with recommended cards to buy
+        continue;
+      }
+      notes.push(`Not enough cards (owned or recommended) to fill ${nonlandTarget - tally.nonland} non-land slots, so they were filled with basic lands.`);
       break;
     }
+    if (best.buy) toBuy[best.e.name] = (toBuy[best.e.name] || 0) + 1;
     best.taken++;
     deck.set(best.e.name, (deck.get(best.e.name) || 0) + 1);
     count(best.e.card, 1);
@@ -242,11 +258,17 @@ export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChange
     const card = lookup(n);
     if (card) reasons[n] = reasonFor(card, ctx, deckCombos.complete);
     if (locked[n]) reasons[n] = { ...(reasons[n] || {}), kept: true };
+    if (toBuy[n]) reasons[n] = { ...(reasons[n] || {}), buy: true };
+  }
+  const buyCount = Object.values(toBuy).reduce((a, b) => a + b, 0);
+  if (buyCount) {
+    const cost = Object.keys(toBuy).reduce((a, n) => a + (Number(lookup(n)?.price) || 0), 0);
+    notes.unshift(`Your collection ran out after ${nonlandTarget - buyCount} non-land cards, so ${buyCount} recommended cards you don't own were added (about $${cost.toFixed(2)} in total). They're marked “Buy”; see the To buy tab.`);
   }
   if ((tally.roles.ramp || 0) < 6) notes.push('Light on ramp: your bulk had few mana rocks or land-search spells in these colors.');
   if ((tally.roles.removal || 0) < 5) notes.push('Light on removal: consider picking up a few cheap removal spells.');
   if (!edh) notes.push('EDHREC data was not available, so cards were chosen with built-in heuristics only.');
-  return { cards, commander: commander ? commander.name : null, notes, reasons, combos: deckCombos.complete.map((c) => c.id) };
+  return { cards, commander: commander ? commander.name : null, notes, reasons, combos: deckCombos.complete.map((c) => c.id), toBuy, shortfall };
 }
 
 function countNonbasic(deck, lookup) {
@@ -268,7 +290,7 @@ function pickNonbasicLands(pool, ctx, deck, max) {
   for (const e of pool) {
     const card = e.card;
     const i = info(card);
-    if (!i.land || i.basic || !i.playable || !legal(card) || e.available <= 0 || deck.has(e.name)) continue;
+    if (e.buy || !i.land || i.basic || !i.playable || !legal(card) || e.available <= 0 || deck.has(e.name)) continue;
     if ((i.identity & ~ctx.mask) !== 0) continue;
     if (!ctx.rules.massLandDenial && i.mld) continue;
     const { s: base, edh } = scoreCard(card, ctx);
@@ -346,6 +368,7 @@ export function explain(name, reason, { commanderName = 'this commander', varian
   if (basic) return 'Basic land, added to make the colors in your mana costs.';
   if (!reason) return '';
   const parts = [];
+  if (reason.buy) parts.push('Not in your collection: recommended to buy, because your own cards ran out.');
   if (reason.incl != null) {
     const pct = Math.round(reason.incl * 100);
     const syn = Math.round(reason.syn * 100);
@@ -490,7 +513,8 @@ export function validateDeck(deck, lookup, availability = () => Infinity, { game
   const cmdMask = cmd ? colorMask(cmd.color_identity) : 31;
   const ctx = makeContext({ commander: cmd, bracket: deck.bracket || 3, gameChangers });
   let gc = 0;
-  const external = deck.external || {};
+  const external = { ...(deck.external || {}) };
+  for (const [n, c] of Object.entries(deck.toBuy || {})) external[n] = (external[n] || 0) + c;
   const entries = Object.entries(deck.cards);
   if (deck.commander) entries.push([deck.commander, 0]);
   for (const [name, count] of entries) {

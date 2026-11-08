@@ -107,6 +107,9 @@ function makeCtx(root, deck) {
       const next = Math.max(0, cur + delta);
       if (next) deck.cards[name] = next; else delete deck.cards[name];
       if (!next && deck.reasons) delete deck.reasons[name];
+      if (deck.toBuy?.[name] && deck.toBuy[name] > next) {
+        if (next) deck.toBuy[name] = next; else delete deck.toBuy[name];
+      }
       await saveDeck(deck);
       ctx.refresh();
     },
@@ -124,8 +127,12 @@ function bindHeader(root, deck, ctx) {
     try {
       const keep = { ...locked };
       const res = await buildFor({ commanderName: deck.commander, slug: deck.edhSlug, theme: deck.theme, themeLabel: deck.themeLabel, bracket: deck.bracket, excludeDeckId: deck.id, locked: keep });
+      // Keep earlier "buy" marks for cards that stay in the deck (Auto-fill keeps them locked).
+      const oldBuy = Object.fromEntries(Object.entries(deck.toBuy || {}).filter(([n]) => res.cards[n]));
+      deck.toBuy = { ...oldBuy, ...res.toBuy };
       deck.cards = res.cards;
       deck.reasons = { ...(deck.reasons || {}), ...res.reasons };
+      for (const n of Object.keys(deck.toBuy)) deck.reasons[n] = { ...(deck.reasons[n] || {}), buy: true };
       for (const n of Object.keys(deck.reasons)) if (!deck.cards[n]) delete deck.reasons[n];
       deck.combos = res.combos;
       deck.notes = res.notes;
@@ -195,6 +202,7 @@ function renderMain(root, deck, ctx) {
   const badgeFor = (name, count) => {
     const card = lookup(name);
     if (!card || info(card).basic) return {};
+    if (deck.toBuy?.[name]) return { badge: `Buy${card.price ? ` $${card.price}` : ''}`, badgeClass: 'buy' };
     const free = ctx.avail(name) + (deck.external?.[name] || 0);
     if (count > free) return { badge: free <= 0 ? 'Not owned' : `${free} free`, badgeClass: 'short' };
     const r = ctx.reason(name);
@@ -220,7 +228,7 @@ function renderMain(root, deck, ctx) {
       html += `<table class="list"><tbody>${items.map((x) => {
         const b = badgeFor(x.name, x.count);
         return `<tr><td class="num" style="width:30px">${x.count}</td>
-          <td><a href="javascript:void 0" data-card="${esc(x.name)}">${esc(x.name)}</a>${comboKeys.has(nameKey(x.name)) ? ' <span class="tag combo">combo</span>' : ''}${b.badgeClass === 'short' ? ` <span class="issue-warn small">${esc(b.badge)}</span>` : ''}
+          <td><a href="javascript:void 0" data-card="${esc(x.name)}">${esc(x.name)}</a>${comboKeys.has(nameKey(x.name)) ? ' <span class="tag combo">combo</span>' : ''}${b.badgeClass === 'short' ? ` <span class="issue-warn small">${esc(b.badge)}</span>` : ''}${b.badgeClass === 'buy' ? ` <span class="tag buy">${esc(b.badge)}</span>` : ''}
             <div class="small muted">${esc(ctx.explain(x.name))}</div></td>
           <td style="width:90px">${manaHTML(x.card.mana_cost)}</td><td style="width:40px">${actions(x.name)}</td></tr>`;
       }).join('')}</tbody></table>`;
@@ -248,6 +256,7 @@ function renderSide(root, deck, ctx) {
       <button class="chip" data-side="combos" aria-pressed="${v.side === 'combos'}">Combos${combos ? ` <span class="count">${combos.complete.length}</span>` : ''}</button>
       <button class="chip" data-side="stats" aria-pressed="${v.side === 'stats'}">Stats</button>
       <button class="chip" data-side="add" aria-pressed="${v.side === 'add'}">Add cards</button>
+      ${buyCount(deck) ? `<button class="chip" data-side="buy" aria-pressed="${v.side === 'buy'}">To buy <span class="count">${buyCount(deck)}</span></button>` : ''}
     </div>
     <div id="side-body"></div>`;
   el.querySelector('.side-tabs').onclick = (e) => {
@@ -255,7 +264,9 @@ function renderSide(root, deck, ctx) {
     v.side = b.dataset.side; renderSide(root, deck, ctx);
   };
   const body = el.querySelector('#side-body');
+  if (v.side === 'buy' && !buyCount(deck)) v.side = 'plan';
   if (v.side === 'stats') renderStats(body, deck, ctx);
+  else if (v.side === 'buy') renderBuy(body, deck, ctx);
   else if (v.side === 'plan') renderPlan(body, deck, ctx);
   else if (v.side === 'combos') renderCombos(body, deck, ctx);
   else {
@@ -292,6 +303,50 @@ function comboHTML(c, { missing = null, ownMissing = false } = {}) {
     ${missing ? `<div class="small">${ownMissing ? '<span class="tag ok">Missing piece is in your collection</span>' : '<span class="tag">Missing piece not owned</span>'}</div>` : ''}
     <div class="small"><a href="${comboUrl(c)}" target="_blank" rel="noopener">How it works (Commander Spellbook) ↗</a> · min. bracket ${c.minBracket}</div>
   </div>`;
+}
+
+const buyCount = (deck) => Object.values(deck.toBuy || {}).reduce((a, b) => a + b, 0);
+
+/** Shopping list for recommended cards that were added because your collection ran out. */
+function renderBuy(el, deck, ctx) {
+  const items = Object.entries(deck.toBuy || {}).map(([n, c]) => ({ n, c, card: lookup(n) }))
+    .sort((a, b) => (Number(a.card?.price) || 0) - (Number(b.card?.price) || 0));
+  const total = items.reduce((a, x) => a + (Number(x.card?.price) || 0) * x.c, 0);
+  const list = items.map((x) => `${x.c} ${x.n}`).join('\n');
+  const tcg = `https://www.tcgplayer.com/massentry?productline=Magic&c=${encodeURIComponent(items.map((x) => `${x.c} ${x.n}`).join('||'))}`;
+  el.innerHTML = `
+    <p class="small">Your collection ran out, so these EDHREC recommendations for ${esc(deck.commander)} fill the remaining slots. Cheaper cards were preferred.</p>
+    <div class="stats" style="margin-bottom:10px">
+      <div class="stat"><b>${buyCount(deck)}</b><span>cards</span></div>
+      <div class="stat"><b>$${total.toFixed(2)}</b><span>approx. total (Scryfall)</span></div>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <a class="btn small primary" href="${tcg}" target="_blank" rel="noopener">Buy on TCGplayer ↗</a>
+      <button class="btn small" id="copy-buy">Copy list</button>
+    </div>
+    ${items.map((x) => `<div class="add-row">
+      ${x.card?.img_small ? `<img src="${esc(x.card.img_small)}" alt="" loading="lazy" data-card="${esc(x.n)}">` : ''}
+      <div class="nm"><div><a href="javascript:void 0" data-card="${esc(x.n)}">${esc(x.n)}</a></div>
+        <small>${x.card?.price ? `$${esc(x.card.price)}` : 'no price'}${ctx.reason(x.n)?.incl != null ? ` · in ${Math.round(ctx.reason(x.n).incl * 100)}% of decks` : ''}</small></div>
+      <button class="btn small" data-got="${esc(x.n)}" title="You got this card: count it as part of your collection">Got it</button>
+      <button class="btn icon" data-minus="${esc(x.n)}" aria-label="Remove ${esc(x.n)}">−</button>
+    </div>`).join('')}
+    <p class="small muted" style="margin-top:8px">“Got it” stops marking the card as one to buy. Import it into your collection too, so it's counted as yours.</p>`;
+  el.querySelector('#copy-buy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(list); toast('Copied'); } catch { toast(list); }
+  });
+  el.onclick = async (e) => {
+    const g = e.target.closest('[data-got]');
+    if (g) {
+      delete deck.toBuy[g.dataset.got];
+      if (deck.reasons?.[g.dataset.got]) delete deck.reasons[g.dataset.got].buy;
+      await saveDeck(deck);
+      ctx.refresh();
+      return;
+    }
+    const m = e.target.closest('[data-minus]');
+    if (m) ctx.change(m.dataset.minus, -1);
+  };
 }
 
 function renderCombos(el, deck, ctx) {

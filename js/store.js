@@ -85,13 +85,23 @@ export async function ensureCards(names, { onProgress } = {}) {
   return new Map(names.map((n) => [n, lookup(n)]));
 }
 
+/**
+ * Copies in a deck that don't come from your bulk: cards from a deck you already own
+ * (`external`, from the Upgrade tool) and recommended cards you still need to buy (`toBuy`).
+ */
+export function notFromBulk(deck) {
+  const out = { ...(deck.external || {}) };
+  for (const [n, c] of Object.entries(deck.toBuy || {})) out[n] = (out[n] || 0) + c;
+  return out;
+}
+
 /** Copies of each card name used across decks (optionally excluding one deck). */
 export function usage(excludeDeckId = null) {
   const used = new Map();
   for (const d of state.decks.values()) {
     if (d.id === excludeDeckId) continue;
     // Cards marked "external" belong to a deck you already own (upgrade tool), not to your bulk.
-    const ext = d.external || {};
+    const ext = notFromBulk(d);
     for (const [n, c] of Object.entries(d.cards)) {
       const fromBulk = c - (ext[n] || 0);
       if (fromBulk > 0) used.set(n, (used.get(n) || 0) + fromBulk);

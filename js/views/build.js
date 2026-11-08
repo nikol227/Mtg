@@ -196,6 +196,7 @@ function renderGo(root) {
         themeLabel: v.themeLabel,
         bracket: v.bracket,
         cards: res.cards,
+        toBuy: res.toBuy || {},
         reasons: res.reasons,
         combos: res.combos,
         notes: res.notes,

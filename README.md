@@ -27,6 +27,7 @@ It is a static site with no build step and no server. Your collection and decks 
   - adds combos that fit the bracket;
   - balances the mana curve and the counts of ramp, card draw, removal and board wipes;
   - picks on-color nonbasic lands and fills the rest with basics.
+- **Filling gaps:** if your collection runs out of usable spells, the remaining slots are filled with the commander's top EDHREC recommendations you don't own, not with extra basic lands. Cheaper cards are preferred. Those cards are marked **Buy** with a price, and a **To buy** tab shows the total, a TCGplayer link and a copyable list. Your own cards are always used first.
 - **Explanations:** every card says why it's in the deck. For example: "Played in 64% of 46,165 Atraxa decks on EDHREC (synergy +22%). Role: Ramp. Combo with Basalt Monolith: Infinite colorless mana."
 - **Game plan:** a short guide to the deck's idea, early turns, engine cards, how it wins (combo or closers) and interaction, built from the deck's own cards.
 - **Combos page:** every combo you can build from your collection, and every combo you're one card away from, with the missing card's price. You can filter by colors, bracket and text.

@@ -161,10 +161,16 @@ const overlap = await page.evaluate(async () => {
   const db = await new Promise((r) => { req.onsuccess = () => r(req.result); });
   const decks = await new Promise((r) => { const q = db.transaction('decks').objectStore('decks').getAll(); q.onsuccess = () => r(q.result); });
   const used = {};
-  for (const d of decks) for (const [n, c] of Object.entries(d.cards)) used[n] = (used[n] || 0) + c;
+  for (const d of decks) for (const [n, c] of Object.entries(d.cards)) used[n] = (used[n] || 0) + c - (d.toBuy?.[n] || 0);
   return Object.entries(used).filter(([n, c]) => !['Forest', 'Plains', 'Island', 'Swamp', 'Mountain'].includes(n) && c > 1);
 });
 assert.deepEqual(overlap, [], 'no card used more times than owned across decks');
+// The pile can't fill a second deck, so EDHREC recommendations you'd need to buy fill the gap.
+await page.click('[data-side="buy"]');
+await page.waitForSelector('#copy-buy');
+assert.match(await page.textContent('#side'), /To buy[\s\S]*Elf Lord/);
+assert.match(await page.textContent('#issues'), /recommended cards you don't own were added/);
+if (shots) await page.screenshot({ path: `${shots}/5b-to-buy.png` });
 
 // Combos page
 await page.click('a[data-tab="combos"]');
