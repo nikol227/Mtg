@@ -4,7 +4,7 @@ import { parseCSV, csvToImportRows, mergeRows } from '../js/csv.js';
 import { slimCard, castRequirements, canCastWith, cardRoles, commanderThemes } from '../js/cards.js';
 import {
   buildDeck, validateDeck, deckSize, deckStats, exportText, info, gamePlan, explain, suggestUpgrades, findDeckCombos, makeContext,
-  eligibleSpellCounter, thinness,
+  eligibleSpellCounter, thinness, fitPreview,
 } from '../js/builder.js';
 import { textToImportRows, looksLikeCSV } from '../js/csv.js';
 import { matchCombos, coverage } from '../js/data.js';
@@ -207,6 +207,36 @@ test('eligible spell counts per commander and thin-pool warnings', () => {
   assert.deepEqual(thinness(10), { needed: 53, level: 'thin' });
   for (const e of pool) e.available = 0;
   assert.equal(eligibleSpellCounter(pool)(['G']), 0, 'cards used in other decks do not count');
+});
+
+test('fit preview: strength, strong fits from your bulk, and bracket reachability', () => {
+  const pool = makePool(1);
+  const cmd = find(pool, 'Elf Queen');
+  const edh = fakeEdh([['Elf Lord', 0.8, 0.5], ['W Removal 2', 0.5, 0.2], ['Not Owned Card', 0.9, 0.4]]);
+  const p = fitPreview({ pool, commander: cmd, edh, bracket: 2 });
+  assert.deepEqual(p.fits.map((f) => f.name), ['Elf Lord', 'W Removal 2'], 'best owned EDHREC cards, best first');
+  assert.equal(p.strength.owned, 2);
+  assert.equal(p.strength.considered, 3);
+  assert.equal(p.strength.level, 'strong');
+  assert.equal(p.brackets[2].warn, false);
+  assert.equal(p.brackets[3].warn, true, 'no Game Changers or strong combos: bracket 3 is flagged');
+  assert.equal(p.brackets[5].warn, true);
+  pool.find((e) => e.name === 'G Ramp').card.game_changer = true;
+  const idx = fakeCombos([[9, ['G Creature 2-0', 'W Creature 2-0'], ['Infinite tokens'], 'GW', 4]]);
+  const q = fitPreview({ pool, commander: cmd, edh, bracket: 4, comboIndex: idx });
+  assert.equal(q.gameChangers, 1);
+  assert.equal(q.combosByBracket[4], 1);
+  assert.equal(q.brackets[3].warn, false);
+  assert.equal(q.brackets[4].warn, false, 'a fast combo makes bracket 4 reachable');
+  pool.find((e) => e.name === 'G Ramp').card.game_changer = false;
+});
+
+test('builder honours a custom land count', () => {
+  const pool = makePool();
+  const res = buildDeck({ pool, commander: find(pool, 'Elf Queen'), lands: 38 });
+  const stats = deckStats({ cards: res.cards, commander: res.commander }, (n) => find(pool, n));
+  assert.equal(stats.lands, 38);
+  assert.equal(stats.total, 100);
 });
 
 test('export text uses set and collector number', () => {

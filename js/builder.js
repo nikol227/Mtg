@@ -151,9 +151,9 @@ function pickCombos(pool, ctx, comboIndex, byKey) {
  * once your own cards run out, and are returned in `toBuy`.
  * Returns { cards, commander, notes, reasons: {name: reason}, combos: [comboId], toBuy: {name: count}, shortfall }
  */
-export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChangers = new Set(), comboIndex = null, locked = {}, theme = null, themeLabel = null }) {
+export function buildDeck({ pool, commander, edh = null, bracket = 3, gameChangers = new Set(), comboIndex = null, locked = {}, theme = null, themeLabel = null, lands = FORMAT.lands }) {
   const ctx = makeContext({ commander, edh, bracket, gameChangers, theme, themeLabel });
-  const fmt = FORMAT;
+  const fmt = { ...FORMAT, lands: Math.max(30, Math.min(42, lands)) };
   const byName = new Map(pool.map((e) => [e.name, e]));
   const byKey = new Map(pool.map((e) => [info(e.card).key, e]));
   const lookup = (n) => byName.get(n)?.card || BASIC_CARDS[n] || null;
@@ -487,6 +487,79 @@ export function eligibleSpellCounter(pool) {
 export function thinness(spells) {
   const needed = Math.max(0, SPELL_SLOTS - spells);
   return { needed, level: needed === 0 ? 'ok' : spells >= SPELL_SLOTS * 0.6 ? 'some' : 'thin' };
+}
+
+// ---------- preview before building: how well your pile supports a choice ----------
+
+const STRENGTH = [
+  [0.45, 'strong'],
+  [0.3, 'steady'],
+  [0.15, 'some'],
+  [0, 'thin'],
+];
+
+/**
+ * What your free cards offer this commander at this strategy/bracket.
+ * edh: the EDHREC page for that strategy or bracket.
+ * Returns {
+ *   fits: [{ name, card, incl, syn }]  best owned cards for it,
+ *   strength: { level: 'strong'|'steady'|'some'|'thin', pct, owned, considered },
+ *   brackets: { 1..5: { warn: bool, reason } }  whether your pile can reach each bracket,
+ *   gameChangers: n, combosByBracket: {1..4: n}
+ * }
+ */
+export function fitPreview({ pool, commander, edh = null, bracket = 3, gameChangers = new Set(), comboIndex = null, limit = 6 }) {
+  const ctx = makeContext({ commander, edh, bracket, gameChangers });
+  const free = pool.filter((e) => !e.buy && e.available > 0 && eligible(e.card, ctx));
+  const fits = free
+    .map((e) => ({ e, ...scoreCard(e.card, ctx) }))
+    .filter((x) => x.edh && !info(x.e.card).land)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, limit)
+    .map((x) => ({ name: x.e.name, card: x.e.card, incl: x.edh.incl, syn: x.edh.syn }));
+
+  let strength = { level: 'thin', pct: 0, owned: 0, considered: 0 };
+  if (edh) {
+    const have = new Set(free.map((e) => info(e.card).key));
+    const top = [...edh.cards.values()]
+      .filter((c) => !/basic/i.test(c.list || '') && nameKey(c.name) !== ctx.commanderKey)
+      .sort((a, b) => b.incl - a.incl)
+      .slice(0, 100);
+    let w = 0; let got = 0; let owned = 0;
+    for (const c of top) {
+      const weight = 0.25 + c.incl;
+      w += weight;
+      if (have.has(nameKey(c.name))) { got += weight; owned++; }
+    }
+    const pct = w ? got / w : 0;
+    strength = { level: STRENGTH.find(([min]) => pct >= min)[1], pct, owned, considered: top.length };
+  }
+
+  // Can the pile actually reach higher brackets? Look at Game Changers and combos you own.
+  const anyBracket = makeContext({ commander, bracket: 5, gameChangers });
+  const freeAny = pool.filter((e) => !e.buy && e.available > 0 && eligible(e.card, anyBracket));
+  const gc = freeAny.filter((e) => isGameChanger(e.card, anyBracket)).length;
+  const combosByBracket = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  if (comboIndex) {
+    const have = new Set(freeAny.map((e) => info(e.card).key));
+    if (anyBracket.commanderKey) have.add(anyBracket.commanderKey);
+    const { complete } = matchCombos(comboIndex, have, { mask: anyBracket.mask, bracket: 5, commanderKey: anyBracket.commanderKey });
+    for (const c of complete) combosByBracket[c.minBracket] = (combosByBracket[c.minBracket] || 0) + 1;
+  }
+  const strongCombos = combosByBracket[3] + combosByBracket[4];
+  const brackets = {
+    1: { warn: false },
+    2: { warn: false },
+    3: gc === 0 && strongCombos === 0
+      ? { warn: true, reason: 'No Game Changers or strong combos in your collection for this commander, so the deck will play closer to bracket 2.' }
+      : { warn: false },
+    4: gc < 3 && combosByBracket[4] === 0
+      ? { warn: true, reason: `${gc ? `Only ${gc} Game Changer${gc === 1 ? '' : 's'}` : 'No Game Changers'} and no fast combos in your collection for this commander, so the deck won't reach bracket 4 power.` }
+      : { warn: false },
+    5: { warn: true, reason: 'Competitive decks need staples that are rarely found in bulk (fast mana, tutors, free spells).' },
+  };
+  if (!brackets[4].warn && gc >= 6 && combosByBracket[4] >= 2) brackets[5] = { warn: false };
+  return { fits, strength, brackets, gameChangers: gc, combosByBracket };
 }
 
 // ---------- commander ranking for owned legends without EDHREC data ----------

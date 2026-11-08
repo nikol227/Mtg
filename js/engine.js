@@ -3,7 +3,7 @@
 import { commanderPage } from './edhrec.js';
 import { combos, gameChangers } from './data.js';
 import { pool, lookup, ensureCards } from './store.js';
-import { buildDeck } from './builder.js';
+import { buildDeck, fitPreview } from './builder.js';
 import { edhrecSlug, nameKey, isLand } from './cards.js';
 
 export async function safe(p) {
@@ -21,20 +21,37 @@ export async function loadContext({ commanderName, slug = null, theme = null, br
 }
 
 /** Build a deck for a commander (fetching its card data first if you don't own it). */
-export async function buildFor({ commanderName, slug, theme, themeLabel, bracket, excludeDeckId = null, locked = {} }) {
+/** Optional build settings (chosen on the Build page, saved on the deck). */
+export const DEFAULT_SETTINGS = { fillWith: 'buy', maxPrice: null, lands: 36 };
+
+export async function buildFor({ commanderName, slug, theme, themeLabel, bracket, excludeDeckId = null, locked = {}, settings = {} }) {
+  const opt = { ...DEFAULT_SETTINGS, ...settings };
   await ensureCards([commanderName]);
   const commander = lookup(commanderName);
   if (!commander) throw new Error(`Couldn't find card data for ${commanderName}.`);
   const ctx = await loadContext({ commanderName, slug, theme, bracket: theme ? null : bracket });
   const owned = pool(excludeDeckId);
-  const opts = { commander, edh: ctx.edh, bracket, gameChangers: ctx.gc, comboIndex: ctx.comboIndex, locked, theme, themeLabel };
+  const opts = { commander, edh: ctx.edh, bracket, gameChangers: ctx.gc, comboIndex: ctx.comboIndex, locked, theme, themeLabel, lands: opt.lands };
   let res = buildDeck({ ...opts, pool: owned });
-  if (res.shortfall > 0 && ctx.edh) {
+  if (res.shortfall > 0 && ctx.edh && opt.fillWith === 'buy') {
     // Your collection ran out: fill the gap with EDHREC's recommendations you don't have free.
-    const extra = await recommendedToBuy(ctx.edh, owned, commander, res.shortfall);
+    const extra = (await recommendedToBuy(ctx.edh, owned, commander, res.shortfall))
+      .filter((e) => opt.maxPrice == null || (Number(e.card.price) || 0) <= opt.maxPrice);
     if (extra.length) res = buildDeck({ ...opts, pool: [...owned, ...extra] });
   }
   return { ...res, ctx, commander };
+}
+
+/**
+ * Preview for the Build page: how well your free cards support this commander at a given
+ * strategy or bracket, its best cards from your bulk, and which brackets your pile can reach.
+ */
+export async function previewFor({ commanderName, slug, theme, bracket }) {
+  await safe(ensureCards([commanderName]));
+  const commander = lookup(commanderName);
+  if (!commander) return null;
+  const ctx = await loadContext({ commanderName, slug, theme, bracket: theme ? null : bracket });
+  return { ...fitPreview({ pool: pool(), commander, edh: ctx.edh, bracket, gameChangers: ctx.gc, comboIndex: ctx.comboIndex }), edh: ctx.edh, commander };
 }
 
 /**

@@ -2,11 +2,12 @@ import { state, pool, saveDeck, newDeckId, collectionTotals, freeByKey, lookup }
 import { ownedCommanders, info, eligibleSpellCounter, thinness, SPELL_SLOTS } from '../builder.js';
 import { popularCommanders, coverage } from '../data.js';
 import { commanderPage, BRACKETS, edhrecUrl } from '../edhrec.js';
-import { buildFor, safe } from '../engine.js';
+import { buildFor, safe, previewFor, DEFAULT_SETTINGS } from '../engine.js';
+import { showCard } from './card-modal.js';
 import { nameKey, edhrecSlug } from '../cards.js';
 import { esc, pipsHTML, toast, debounce } from '../ui.js';
 
-const v = { tab: 'best', query: '', commander: null, slug: null, theme: null, themeLabel: null, bracket: 3, name: '', edh: null, edhFor: null, shown: 24 };
+const v = { tab: 'best', query: '', commander: null, slug: null, theme: null, themeLabel: null, bracket: 3, name: '', edh: null, edhFor: null, shown: 24, settings: { ...DEFAULT_SETTINGS }, settingsOpen: false };
 let rankCache = { version: -1, list: null };
 
 export function render(root) {
@@ -139,7 +140,7 @@ function buildWarning() {
   const x = rankCache.list?.find((c) => c.name === v.commander);
   if (!x || x.thin.level === 'ok') return '';
   return `<div class="notice warn" style="margin-top:8px">⚠ Your collection has <b>${x.spells}</b> eligible ${colorLabel(x.colors)} spells for this commander, and a deck needs ${SPELL_SLOTS}.
-    About <b>${x.thin.needed}</b> slots will be filled with EDHREC's recommended cards that you'd need to buy (cheaper ones first). They'll be marked “Buy” in the deck.</div>`;
+    ${v.settings.fillWith === 'basics' ? `The other ~${x.thin.needed} slots will be filled with basic lands (you chose "only cards I own" in the build settings).` : `About <b>${x.thin.needed}</b> slots will be filled with EDHREC's recommended cards that you'd need to buy (cheaper ones first${v.settings.maxPrice != null ? `, at most $${v.settings.maxPrice} each` : ''}). They'll be marked “Buy” in the deck.`}</div>`;
 }
 
 async function loadBase() {
@@ -167,6 +168,7 @@ function renderTheme(root) {
     v.theme = b.dataset.theme || null; v.themeLabel = b.dataset.label || null; v.name = '';
     el.querySelectorAll('[data-theme]').forEach((x) => x.setAttribute('aria-pressed', x === b));
     renderGo(root);
+    refreshFit(root);
   });
 }
 
@@ -175,14 +177,76 @@ function renderBracket(root) {
   el.innerHTML = `${stepTitle(3, 'Power bracket', 'Sets how many Game Changers and which combos are allowed')}
     <div class="picks">${BRACKETS.map((b) => `
       <button type="button" class="pick" data-bracket="${b.n}" aria-pressed="${v.bracket === b.n}">
-        <span class="t">${b.n}. ${esc(b.label)}</span><span class="d">${esc(b.blurb)}</span>
-      </button>`).join('')}</div>`;
+        <span class="t">${b.n}. ${esc(b.label)} <span class="bracket-warn hidden" data-warn="${b.n}" aria-label="Your collection may not reach this bracket">!</span></span>
+        <span class="d">${esc(b.blurb)}</span>
+        <span class="d warn-text hidden" data-warn-text="${b.n}"></span>
+      </button>`).join('')}</div>
+    <div id="fit" class="fit"></div>
+    <details class="settings" id="settings" ${v.settingsOpen ? 'open' : ''}>
+      <summary><b>Optional build settings</b></summary>
+      <div class="settings-grid">
+        <label>When your cards run out, fill the gaps with
+          <select id="set-fill">
+            <option value="buy" ${v.settings.fillWith === 'buy' ? 'selected' : ''}>Recommended cards to buy</option>
+            <option value="basics" ${v.settings.fillWith === 'basics' ? 'selected' : ''}>Basic lands (only cards I own)</option>
+          </select>
+        </label>
+        <label>Most I'd pay per card to buy
+          <select id="set-price" ${v.settings.fillWith === 'basics' ? 'disabled' : ''}>
+            ${[[null, 'No limit'], [5, '$5'], [2, '$2'], [1, '$1'], [0.5, '$0.50'], [0.25, '$0.25']].map(([p, l]) => `<option value="${p ?? ''}" ${v.settings.maxPrice === p ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </label>
+        <label>Number of lands
+          <select id="set-lands">${[33, 34, 35, 36, 37, 38].map((n) => `<option ${v.settings.lands === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        </label>
+      </div>
+    </details>`;
   el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-bracket]'); if (!b) return;
     v.bracket = Number(b.dataset.bracket);
     el.querySelectorAll('[data-bracket]').forEach((x) => x.setAttribute('aria-pressed', x === b));
     renderGo(root);
+    refreshFit(root);
   });
+  el.querySelector('#settings').addEventListener('toggle', (e) => { v.settingsOpen = e.target.open; });
+  el.querySelector('#set-fill').addEventListener('change', (e) => {
+    v.settings.fillWith = e.target.value;
+    el.querySelector('#set-price').disabled = v.settings.fillWith === 'basics';
+    renderGo(root);
+  });
+  el.querySelector('#set-price').addEventListener('change', (e) => { v.settings.maxPrice = e.target.value === '' ? null : Number(e.target.value); renderGo(root); });
+  el.querySelector('#set-lands').addEventListener('change', (e) => { v.settings.lands = Number(e.target.value); });
+  refreshFit(root);
+}
+
+let fitSeq = 0;
+/** Summary + best cards from your bulk for the chosen commander/strategy/bracket, and bracket warnings. */
+async function refreshFit(root) {
+  const el = root.querySelector('#fit');
+  if (!el || !v.commander) return;
+  const seq = ++fitSeq;
+  el.innerHTML = '<p class="small muted"><span class="spinner"></span> Checking your collection for this build…</p>';
+  const p = await safe(previewFor({ commanderName: v.commander, slug: v.slug, theme: v.theme, bracket: v.bracket }));
+  if (seq !== fitSeq || !root.querySelector('#fit')) return;
+  if (!p) { el.innerHTML = ''; return; }
+  for (const [n, b] of Object.entries(p.brackets)) {
+    root.querySelector(`[data-warn="${n}"]`)?.classList.toggle('hidden', !b.warn);
+    const t = root.querySelector(`[data-warn-text="${n}"]`);
+    if (t) { t.textContent = b.warn ? `⚠ ${b.reason}` : ''; t.classList.toggle('hidden', !b.warn); }
+  }
+  const bracket = BRACKETS.find((b) => b.n === v.bracket);
+  const what = v.themeLabel ? esc(v.themeLabel) : 'general';
+  el.innerHTML = p.edh ? `
+    <h3 class="fit-title">Your collection has <em>${p.strength.level}</em> ${esc(bracket.label.toLowerCase())} (bracket ${bracket.n}) ${what} support.</h3>
+    <p class="small muted">You own ${p.strength.owned} of the ${p.strength.considered} cards played most in ${esc(v.commander)} ${what === 'general' ? '' : `${what} `}decks at this level on EDHREC.
+      ${p.gameChangers ? `${p.gameChangers} Game Changer${p.gameChangers === 1 ? '' : 's'} available.` : ''}</p>
+    ${p.fits.length ? `<div class="fit-label">Strong fits from your bulk</div>
+    <div class="fit-cards">${p.fits.map((f) => `<figure data-card="${esc(f.name)}">
+      ${f.card.img_small ? `<img src="${esc(f.card.img)}" alt="${esc(f.name)}" loading="lazy">` : `<div class="img-ph">${esc(f.name)}</div>`}
+      <figcaption>${esc(f.name)}<br><span class="muted">in ${Math.round(f.incl * 100)}% of decks${f.syn >= 0.05 ? ` · +${Math.round(f.syn * 100)}% synergy` : ''}</span></figcaption>
+    </figure>`).join('')}</div>` : '<p class="small muted">None of your free cards appear on EDHREC\'s list for this build yet.</p>'}`
+    : '<p class="small muted">EDHREC has no data for this commander, so there\'s no preview. The builder will use its own card evaluation.</p>';
+  el.onclick = (e) => { const c = e.target.closest('[data-card]'); if (c) showCard(c.dataset.card); };
 }
 
 function defaultName() {
@@ -210,7 +274,7 @@ function renderGo(root) {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Building…';
     try {
-      const res = await buildFor({ commanderName: v.commander, slug: v.slug, theme: v.theme, themeLabel: v.themeLabel, bracket: v.bracket });
+      const res = await buildFor({ commanderName: v.commander, slug: v.slug, theme: v.theme, themeLabel: v.themeLabel, bracket: v.bracket, settings: v.settings });
       const deck = {
         id: newDeckId(),
         name: (el.querySelector('#deck-name').value || defaultName()).trim(),
@@ -223,6 +287,7 @@ function renderGo(root) {
         bracket: v.bracket,
         cards: res.cards,
         toBuy: res.toBuy || {},
+        settings: { ...v.settings },
         reasons: res.reasons,
         combos: res.combos,
         notes: res.notes,

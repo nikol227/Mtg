@@ -126,7 +126,7 @@ function bindHeader(root, deck, ctx) {
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
       const keep = { ...locked };
-      const res = await buildFor({ commanderName: deck.commander, slug: deck.edhSlug, theme: deck.theme, themeLabel: deck.themeLabel, bracket: deck.bracket, excludeDeckId: deck.id, locked: keep });
+      const res = await buildFor({ commanderName: deck.commander, slug: deck.edhSlug, theme: deck.theme, themeLabel: deck.themeLabel, bracket: deck.bracket, excludeDeckId: deck.id, locked: keep, settings: deck.settings || {} });
       // Keep earlier "buy" marks for cards that stay in the deck (Auto-fill keeps them locked).
       const oldBuy = Object.fromEntries(Object.entries(deck.toBuy || {}).filter(([n]) => res.cards[n]));
       deck.toBuy = { ...oldBuy, ...res.toBuy };

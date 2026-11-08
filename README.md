@@ -28,6 +28,11 @@ It is a static site with no build step and no server. Your collection and decks 
   - how many Game Changers can be included (none in brackets 1–2, up to 3 in bracket 3);
   - how many combos are added on purpose, and how strong they can be (using Spellbook's own bracket tags);
   - whether mass land denial and extra-turn cards are allowed.
+- **Before you build:**
+  - brackets your collection probably can't reach are flagged ⚠, based on the Game Changers and combos you own;
+  - a one-line summary rates your support for the chosen strategy and bracket ("thin / some / steady / strong");
+  - "Strong fits from your bulk" previews your best cards for that build.
+- **Optional build settings:** fill gaps with recommended cards to buy or with basic lands; set the most you'd pay per card to buy; choose a land count from 33 to 38. Settings are saved with the deck and reused by Rebuild and Auto-fill.
 - **Deck builder:** cards are scored mainly by EDHREC inclusion and synergy for that commander (or that strategy or bracket page). The builder also:
   - adds combos that fit the bracket;
   - balances the mana curve and the counts of ramp, card draw, removal and board wipes;
