@@ -320,3 +320,12 @@ textarea.paste { width: 100%; min-height: 160px; font: 13px/1.4 ui-monospace, SF
 .care-swap { display: grid; grid-template-columns: auto 1fr 1fr; gap: 8px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .88rem; }
 .care-swap img { width: 40px; border-radius: 3px; cursor: pointer; flex: none; }
 .care-out, .care-in { display: flex; gap: 6px; min-width: 0; }
+/* ---------- synergies ---------- */
+.syn-group { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.syn-group h3 { color: var(--accent); margin-bottom: 8px; }
+.syn-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.syn-chip { font-size: .8rem; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); text-decoration: none; color: var(--text); }
+.syn-chip:hover { border-color: var(--accent); }
+.syn-note { border-left: 3px solid var(--accent); padding-left: 10px; margin-top: 8px; }
+.syn-note ul, .syn-group > ul { margin: 4px 0 0; padding-left: 18px; }
+.syn-label { font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--accent); }

@@ -167,6 +167,11 @@ await page.waitForSelector(`#deck-main [data-card="${swapIn}"]`);
 assert.ok(!(await page.$('#deck-main [data-card="W Removal 1"]')), 'old card removed');
 assert.equal(await page.textContent('#size-label').then((t) => t.split(' ')[0]), '100');
 await page.click('#view-mode [data-mode="grid"]');
+// Synergies tab: creature-type team found from card text
+await page.click('[data-side="synergy"]');
+await page.waitForSelector('.syn-group');
+assert.match(await page.textContent('#side-body'), /Build an Elf army[\s\S]*What it needs/);
+if (shots) await page.screenshot({ path: `${shots}/4d-synergy.png` });
 // Deck Care (Optimize tab): goal-directed swaps from owned cards
 await page.click('[data-side="care"]');
 await page.waitForSelector('#care-goals');

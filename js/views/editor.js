@@ -10,6 +10,7 @@ import { loadContext, buildFor } from '../engine.js';
 import { COLORS, BASIC_FOR_COLOR, primaryType, nameKey } from '../cards.js';
 import { esc, manaHTML, pipsHTML, tileHTML, toast, openModal, closeModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
 import { showCard } from './card-modal.js';
+import { findSynergies, deckCautions } from '../synergy.js';
 
 const SECTIONS = ['Creature', 'Planeswalker', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Battle', 'Other', 'Land'];
 const SECTION_LABEL = { Creature: 'Creatures', Planeswalker: 'Planeswalkers', Instant: 'Instants', Sorcery: 'Sorceries', Artifact: 'Artifacts', Enchantment: 'Enchantments', Battle: 'Battles', Other: 'Other', Land: 'Lands' };
@@ -310,6 +311,7 @@ function renderSide(root, deck, ctx) {
   el.innerHTML = `
     <div class="side-tabs chips">
       <button class="chip" data-side="plan" aria-pressed="${v.side === 'plan'}">Game plan</button>
+      <button class="chip" data-side="synergy" aria-pressed="${v.side === 'synergy'}">Synergies</button>
       <button class="chip" data-side="combos" aria-pressed="${v.side === 'combos'}">Combos${combos ? ` <span class="count">${combos.complete.length}</span>` : ''}</button>
       <button class="chip" data-side="stats" aria-pressed="${v.side === 'stats'}">Stats</button>
       <button class="chip" data-side="care" aria-pressed="${v.side === 'care'}">Optimize</button>
@@ -326,6 +328,7 @@ function renderSide(root, deck, ctx) {
   if (v.side === 'stats') renderStats(body, deck, ctx);
   else if (v.side === 'buy') renderBuy(body, deck, ctx);
   else if (v.side === 'care') renderCare(body, deck, ctx);
+  else if (v.side === 'synergy') renderSynergy(body, deck);
   else if (v.side === 'plan') renderPlan(body, deck, ctx);
   else if (v.side === 'combos') renderCombos(body, deck, ctx);
   else {
@@ -362,6 +365,32 @@ function comboHTML(c, { missing = null, ownMissing = false } = {}) {
     ${missing ? `<div class="small">${ownMissing ? '<span class="tag ok">Missing piece is in your collection</span>' : '<span class="tag">Missing piece not owned</span>'}</div>` : ''}
     <div class="small"><a href="${comboUrl(c)}" target="_blank" rel="noopener">How it works (Commander Spellbook) ↗</a> · min. bracket ${c.minBracket}</div>
   </div>`;
+}
+
+/** The deck's cards (with the commander) as [{name, card, count}] for the synergy/caution rules. */
+function deckEntries(deck) {
+  const out = Object.entries(deck.cards).map(([name, count]) => ({ name, count, card: lookup(name) })).filter((x) => x.card);
+  const cmd = deck.commander ? lookup(deck.commander) : null;
+  if (cmd) out.unshift({ name: cmd.name, count: 1, card: cmd, commander: true });
+  return out;
+}
+
+/** Synergy groups (what works together, what it needs, what to watch for) and deck-wide cautions. */
+function renderSynergy(el, deck) {
+  const entries = deckEntries(deck);
+  const groups = findSynergies(entries);
+  const cautions = deckCautions(entries, deckStats(deck, lookup), deck.colors);
+  const chip = (n) => `<a href="javascript:void 0" class="syn-chip" data-card="${esc(n)}">${esc(n)}</a>`;
+  el.innerHTML = `
+    <p class="small muted">How these cards work together, and what each plan needs. Found from the cards' rules text; your deck can have other interactions too.</p>
+    ${groups.length ? groups.map((g) => `<section class="syn-group">
+      <h3>${esc(g.title)}</h3>
+      <div class="syn-chips">${g.cards.slice(0, 12).map(chip).join('')}${g.cards.length > 12 ? `<span class="muted small">+${g.cards.length - 12} more</span>` : ''}</div>
+      <p class="small">${esc(g.desc)}</p>
+      <div class="syn-note"><div class="syn-label">What it needs</div><p class="small">${esc(g.needs)}</p></div>
+      ${g.watch.length ? `<div class="syn-note"><div class="syn-label">Watch for</div><ul class="small">${g.watch.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>` : ''}
+    </section>`).join('') : '<p class="muted small">No strong card-text synergies found. The deck leans on individually good cards.</p>'}
+    ${cautions.length ? `<section class="syn-group"><div class="syn-label">Deck-wide cautions</div><ul class="small">${cautions.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></section>` : ''}`;
 }
 
 /** Deck Care: pick a goal, review in/out swaps from your own cards, apply the ones you like. */

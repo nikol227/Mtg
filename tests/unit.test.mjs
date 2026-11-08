@@ -10,6 +10,7 @@ import { textToImportRows, looksLikeCSV } from '../js/csv.js';
 import { matchCombos, coverage } from '../js/data.js';
 import { nameKey, colorMask } from '../js/cards.js';
 import { fetchCollection } from '../js/scryfall.js';
+import { findSynergies, deckCautions } from '../js/synergy.js';
 import { bulkPile } from './fixtures.mjs';
 
 const MANABOX = `Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall ID,Purchase price,Misprint,Altered,Condition,Language,Purchase price currency
@@ -281,6 +282,22 @@ test('Deck Care suggests goal-directed swaps from owned cards', () => {
   const protectedCard = 'G Creature 1-0';
   const draw = deckCare('draw', { deckCards: cards, pool, ctx, lookupCard: look, protect: new Set([protectedCard]) });
   assert.ok(draw.every((s) => s.out.name !== protectedCard), 'protected cards are never cut');
+});
+
+test('synergy groups and deck-wide cautions from card text', () => {
+  const pool = makePool(1);
+  const pick = (re) => pool.filter((e) => re.test(e.name)).map((e) => ({ name: e.name, count: 1, card: e.card }));
+  const cards = [...pick(/^(G Creature|Elf Lord|Elf Queen)/), ...pick(/^Forest$/)];
+  const groups = findSynergies(cards);
+  const elves = groups.find((g) => g.key === 'tribe:Elf');
+  assert.ok(elves, 'Elf team found');
+  assert.ok(elves.payoffs.includes('Elf Lord') && elves.payoffs.includes('Elf Queen'));
+  assert.match(elves.needs, /of your \d+ creatures are Elves/);
+  assert.ok(!groups.some((g) => g.key === 'counters'), 'counters placed but nothing rewards them: no group');
+  const stats = deckStats({ cards: Object.fromEntries(cards.map((x) => [x.name, x.count])) }, (n) => find(pool, n));
+  const cautions = deckCautions(cards, stats, ['G']);
+  assert.ok(cautions.some((c) => /removal/.test(c)), 'flags light removal');
+  assert.ok(cautions.some((c) => /card access/.test(c)), 'flags few draw engines');
 });
 
 test('export text uses set and collector number', () => {
