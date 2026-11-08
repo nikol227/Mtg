@@ -1,5 +1,5 @@
 import { state, lookup, availabilityFn } from '../store.js';
-import { deckSize, validateDeck, deckColors } from '../builder.js';
+import { deckSize, validateDeck, deckColors, deckCost } from '../builder.js';
 import { BRACKETS } from '../edhrec.js';
 import { esc, pipsHTML } from '../ui.js';
 
@@ -13,6 +13,12 @@ export function render(root) {
   root.innerHTML = `
     <div class="row spread" style="margin-bottom:14px"><h1 style="margin:0">My decks</h1><a class="btn primary" href="#/build">+ New deck</a></div>
     <div class="deck-tiles">${decks.map(tile).join('')}</div>`;
+}
+
+function costLine(d) {
+  const owned = d.external?.[d.commander] || availabilityFn(d.id)(d.commander) > 0;
+  const c = deckCost(d, lookup, { commanderOwned: owned });
+  return `Value $${c.total.toFixed(2)}${c.toBuyCount ? ` · <span class="tag buy">To buy $${c.toBuy.toFixed(2)} (${c.toBuyCount})</span>` : ''}`;
 }
 
 function tile(d) {
@@ -34,7 +40,8 @@ function tile(d) {
       <div><b>${esc(d.name)}</b></div>
       <div class="small muted">${esc(d.commander || '')}${d.themeLabel ? ` · ${esc(d.themeLabel)}` : ''}</div>
       <div>${pipsHTML(deckColors(d, lookup))} <span class="small muted">Bracket ${bracket.n} · ${esc(bracket.label)}</span></div>
-      <div>${status}${Object.keys(d.toBuy || {}).length ? ` <span class="tag buy">${Object.values(d.toBuy).reduce((a, b) => a + b, 0)} to buy</span>` : ''}</div>
+      <div>${status}</div>
+      <div class="small">${costLine(d)}</div>
     </div>
   </a>`;
 }

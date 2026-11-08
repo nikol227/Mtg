@@ -135,7 +135,7 @@ await page.selectOption('#set-lands', '37');
 assert.equal(await page.inputValue('#set-lands'), '37');
 if (shots) await page.screenshot({ path: `${shots}/3-build.png`, fullPage: true });
 await page.click('#go');
-await page.waitForSelector('#deck-main .tile');
+await page.waitForSelector('#deck-main .thumb-row');
 assert.match(await page.textContent('#size-label'), /^100 \/ 100 cards/);
 await page.waitForSelector('.plan-summary');
 assert.match(await page.textContent('#side'), /The idea[\s\S]*Early turns[\s\S]*How it wins/);
@@ -154,8 +154,12 @@ await page.click('[data-side="combos"]');
 await page.waitForSelector('.combo');
 assert.match(await page.textContent('#side'), /In this deck \(1\)[\s\S]*Infinite tokens[\s\S]*One card away \(1\)[\s\S]*Missing Piece/);
 if (shots) await page.screenshot({ path: `${shots}/5-editor-combos.png` });
+// Hovering a thumbnail shows the large preview
+await page.hover('#deck-main .thumb-row[data-card="Elf Lord"] .thumb-img');
+assert.ok(await page.isVisible('#hover-preview.show'), 'hover preview appears');
+await page.mouse.move(0, 0);
 // Explanation in the card dialog
-await page.click('#deck-main .tile[data-card="Elf Lord"]');
+await page.click('#deck-main .thumb-row[data-card="Elf Lord"]');
 await page.waitForSelector('#modal-body .notice');
 assert.match(await page.textContent('#modal-body .notice'), /Played in 80% of 5,000 Elf Queen decks/);
 await page.click('#modal [data-close]');
@@ -207,8 +211,10 @@ assert.match(await page.textContent('[data-cmd="Popular Guy"]'), /Commander not 
 await page.click('[data-cmd="Popular Guy"]');
 await page.waitForSelector('#themes [data-theme]');
 await page.click('#go');
-await page.waitForSelector('#deck-main .tile');
+await page.waitForSelector('#deck-main .thumb-row');
 assert.match(await page.textContent('#issues'), /Popular Guy: not free in your collection \(your commander\)/);
+// Costs: whole-deck value, and what you'd need to buy (cards marked to buy + the unowned commander)
+assert.match(await page.textContent('#cost-label'), /Deck value \$\d+\.\d\d · To buy: \$\d+\.\d\d \(\d+ cards\)/);
 const overlap = await page.evaluate(async () => {
   const req = indexedDB.open('mtg-bulk-builder');
   const db = await new Promise((r) => { req.onsuccess = () => r(req.result); });
@@ -241,7 +247,7 @@ await page.click('#go');
 await page.waitForSelector('.swap');
 if (shots) await page.screenshot({ path: `${shots}/7-upgrade.png` });
 await page.click('#save');
-await page.waitForSelector('#deck-main .tile');
+await page.waitForSelector('#deck-main .thumb-row');
 
 await page.click('a[data-tab="decks"]');
 await page.waitForSelector('.deck-tile');
@@ -251,7 +257,7 @@ if (shots) await page.screenshot({ path: `${shots}/8-decks.png` });
 // Phone width: no horizontal scroll in the editor
 await page.setViewportSize({ width: 390, height: 844 });
 await page.click('.deck-tile >> nth=0');
-await page.waitForSelector('#deck-main .tile');
+await page.waitForSelector('#deck-main .thumb-row');
 const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 assert.ok(overflow <= 0, `horizontal overflow ${overflow}px`);
 if (shots) await page.screenshot({ path: `${shots}/9-phone.png` });

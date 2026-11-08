@@ -34,6 +34,52 @@ export function cardImageURL(name, version = 'small') {
   return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}&format=image&version=${version}`;
 }
 
+/**
+ * Compact decklist row: small thumbnail (hover to enlarge), card name, mana cost, type,
+ * role chips, a badge and action buttons.
+ */
+export function thumbRowHTML(card, { count = 1, badge = '', badgeClass = '', actions = '', chips = '', combo = false } = {}) {
+  const img = card.img_small || card.img;
+  return `<div class="thumb-row${combo ? ' combo-piece' : ''}" data-card="${esc(card.name)}">
+    ${img ? `<img class="thumb-img" src="${esc(img)}" alt="" loading="lazy" data-preview="${esc(card.img || img)}">` : '<span class="thumb-img thumb-ph"></span>'}
+    <div class="tr-main">
+      <div class="tr-name">${count > 1 ? `<b>${count}×</b> ` : ''}<a href="javascript:void 0">${esc(card.name)}</a> ${badge ? `<span class="tr-badge ${badgeClass}">${badge}</span>` : ''}</div>
+      <div class="tr-sub">${manaHTML(card.mana_cost)} <span class="muted">${esc(card.type_line || '')}</span> ${chips}</div>
+    </div>
+    ${actions ? `<div class="tr-actions">${actions}</div>` : ''}
+  </div>`;
+}
+
+/** Hovering any card thumbnail shows a large preview next to the pointer (mouse/trackpad only). */
+export function installHoverPreview() {
+  if (!window.matchMedia?.('(hover: hover)').matches) return;
+  const box = document.createElement('div');
+  box.id = 'hover-preview';
+  box.innerHTML = '<img alt="">';
+  document.body.appendChild(box);
+  const img = box.querySelector('img');
+  const target = (el) => el?.closest?.('img[data-preview], .add-row img, .care-swap img, .thumbs img, .combo-cards img, .swap img, .fit-cards img');
+  const place = (e) => {
+    const w = 260; const h = 362; const pad = 16;
+    let x = e.clientX + pad; let y = e.clientY - h / 2;
+    if (x + w > window.innerWidth - 8) x = e.clientX - w - pad;
+    y = Math.max(8, Math.min(window.innerHeight - h - 8, y));
+    box.style.transform = `translate(${x}px, ${y}px)`;
+  };
+  document.addEventListener('mouseover', (e) => {
+    const t = target(e.target);
+    if (!t) return;
+    const src = t.dataset.preview || (t.src || '').replace('/small/', '/normal/');
+    if (!src) return;
+    img.src = src;
+    box.classList.add('show');
+    place(e);
+  });
+  document.addEventListener('mousemove', (e) => { if (box.classList.contains('show')) place(e); });
+  document.addEventListener('mouseout', (e) => { if (target(e.target)) box.classList.remove('show'); });
+  document.addEventListener('scroll', () => box.classList.remove('show'), true);
+}
+
 export function tileHTML(card, { badge = '', badgeClass = '', count = null, actions = '', theme = false, combo = false, attrs = '' } = {}) {
   const img = card.img
     ? `<img src="${esc(card.img)}" alt="${esc(card.name)}" loading="lazy" decoding="async">`

@@ -4,7 +4,7 @@ import { parseCSV, csvToImportRows, mergeRows } from '../js/csv.js';
 import { slimCard, castRequirements, canCastWith, cardRoles, commanderThemes } from '../js/cards.js';
 import {
   buildDeck, validateDeck, deckSize, deckStats, exportText, info, gamePlan, explain, suggestUpgrades, findDeckCombos, makeContext,
-  eligibleSpellCounter, thinness, fitPreview, deckProfile, deckCare, BASIC_CARDS,
+  eligibleSpellCounter, thinness, fitPreview, deckProfile, deckCare, BASIC_CARDS, deckCost,
 } from '../js/builder.js';
 import { textToImportRows, looksLikeCSV } from '../js/csv.js';
 import { matchCombos, coverage } from '../js/data.js';
@@ -326,6 +326,15 @@ test('one-paragraph game plan names real cards', () => {
   const plan = planSummary(cards, { roleOf: (c) => info(c).roles, reasons: { 'Elf Lord': { syn: 0.5 } } });
   assert.match(plan.text, /^Develop Elves[\s\S]*, then use Elf Queen and Elf Lord to strengthen your board\. Keep cards coming with G Draw \d and G Draw \d, and finish/);
   assert.ok(plan.cards.includes('Elf Lord'));
+});
+
+test('deck value and cost of cards to buy', () => {
+  const mk = (name, usd, type_line) => slimCard({ name, type_line, mana_cost: '{1}', prices: { usd }, legalities: {} });
+  const cards = { A: mk('A', '1.50', 'Creature'), B: mk('B', '4.00', 'Instant'), C: mk('C', null, 'Sorcery'), Cmd: mk('Cmd', '10.00', 'Legendary Creature — Elf') };
+  const look = (n) => cards[n] || BASIC_CARDS[n];
+  const deck = { commander: 'Cmd', cards: { A: 2, B: 1, C: 1, Forest: 30 }, toBuy: { B: 1 } };
+  assert.deepEqual(deckCost(deck, look), { total: 17, toBuy: 4, toBuyCount: 1, unpriced: 1 });
+  assert.deepEqual(deckCost(deck, look, { commanderOwned: false }), { total: 17, toBuy: 14, toBuyCount: 2, unpriced: 1 });
 });
 
 test('export text uses set and collector number', () => {

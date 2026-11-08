@@ -817,6 +817,27 @@ export function validateDeck(deck, lookup, availability = () => Infinity, { game
   return issues;
 }
 
+/**
+ * Prices from Scryfall (USD, per card). Basic lands count as free.
+ * Returns { total, toBuy, toBuyCount, unpriced } — `total` is the whole deck incl. the commander,
+ * `toBuy` covers cards marked to buy plus a commander you don't own (if `commanderOwned` is false).
+ */
+export function deckCost(deck, lookup, { commanderOwned = true } = {}) {
+  let total = 0; let toBuy = 0; let toBuyCount = 0; let unpriced = 0;
+  const entries = Object.entries(deck.cards);
+  if (deck.commander) entries.push([deck.commander, 1]);
+  for (const [name, count] of entries) {
+    const card = lookup(name);
+    if (!card || info(card).basic) continue;
+    const p = Number(card.price);
+    if (!p) { unpriced += count; continue; }
+    total += p * count;
+    const buying = (deck.toBuy?.[name] || 0) + (name === deck.commander && !commanderOwned ? 1 : 0);
+    if (buying) { toBuy += p * buying; toBuyCount += buying; }
+  }
+  return { total, toBuy, toBuyCount, unpriced };
+}
+
 export function deckSize(deck) {
   return Object.values(deck.cards).reduce((a, b) => a + b, 0) + (deck.commander ? 1 : 0);
 }

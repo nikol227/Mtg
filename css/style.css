@@ -342,3 +342,28 @@ textarea.paste { width: 100%; min-height: 160px; font: 13px/1.4 ui-monospace, SF
 .hand figcaption { font-size: .72rem; text-align: center; color: var(--accent); }
 .hand-verdict.keep b { color: var(--ok); }
 .hand-verdict.mull b { color: var(--warn); }
+
+/* ---------- thumbnail decklist + hover preview ---------- */
+.thumb-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2px 18px; }
+.thumb-row { display: flex; align-items: center; gap: 10px; padding: 5px 4px; border-bottom: 1px solid var(--border); border-radius: 6px; cursor: pointer; min-width: 0; }
+.thumb-row:hover { background: var(--surface-2); }
+.thumb-row.combo-piece { box-shadow: inset 3px 0 0 var(--accent); }
+.thumb-img { width: 40px; height: 56px; object-fit: cover; border-radius: 3px; flex: none; box-shadow: var(--shadow); }
+.thumb-ph { display: inline-block; background: var(--surface-2); }
+.tr-main { flex: 1; min-width: 0; }
+.tr-name { font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-name a { color: var(--text); text-decoration: none; font-weight: 600; }
+.tr-sub { font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-sub .mana img { width: 13px; height: 13px; }
+.tr-badge { font-size: .7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-2); }
+.tr-badge.short { background: #b3261e; color: #fff; }
+.tr-badge.buy { background: #1f5fbf; color: #fff; }
+.tr-actions { display: flex; gap: 4px; flex: none; }
+.commander-row { grid-template-columns: minmax(300px, 520px); }
+#hover-preview { position: fixed; left: 0; top: 0; z-index: 200; pointer-events: none; opacity: 0; transition: opacity .08s; }
+#hover-preview.show { opacity: 1; }
+#hover-preview img { width: 260px; border-radius: 4.75% / 3.5%; box-shadow: 0 12px 40px rgba(0,0,0,.55); display: block; }
+@media (max-width: 640px) { .thumb-list { grid-template-columns: 1fr; } }
+.cost-label { color: var(--text-2); }
+.cost-label .buy-cost { color: #1f5fbf; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .cost-label .buy-cost { color: #8fb8ff; } }

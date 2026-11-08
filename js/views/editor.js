@@ -1,14 +1,14 @@
 import { state, lookup, pool, saveDeck, deleteDeck, newDeckId, availabilityFn, freeByKey, ensureCards } from '../store.js';
 import {
   FORMAT, validateDeck, deckStats, deckSize, exportText, info, makeContext, scoreCard, isGameChanger,
-  cardTags, strategyGroup, STRATEGY_GROUPS, swapOptions, deckCare, CARE_GOALS, goalValue, fitsDeck,
+  cardTags, strategyGroup, STRATEGY_GROUPS, swapOptions, deckCare, CARE_GOALS, goalValue, fitsDeck, deckCost,
   reasonFor, explain, gamePlan, findDeckCombos, BRACKET_RULES,
 } from '../builder.js';
 import { BRACKETS, edhrecUrl } from '../edhrec.js';
 import { comboUrl } from '../data.js';
 import { loadContext, buildFor } from '../engine.js';
 import { COLORS, BASIC_FOR_COLOR, primaryType, nameKey } from '../cards.js';
-import { esc, manaHTML, pipsHTML, tileHTML, toast, openModal, closeModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
+import { esc, manaHTML, pipsHTML, tileHTML, thumbRowHTML, toast, openModal, closeModal, download, matchesFilters, TYPE_FILTERS, debounce, cardImageURL } from '../ui.js';
 import { showCard } from './card-modal.js';
 import { findSynergies, deckCautions, planSummary } from '../synergy.js';
 import { library, shuffle, handStats, verdict, landOdds } from '../hand.js';
@@ -46,11 +46,12 @@ export function render(root, id) {
     </div>
     <div class="row small" style="margin:4px 0 12px">
       <span><b id="size-label"></b></span>
+      <span id="cost-label" class="cost-label"></span>
       <span>${pipsHTML(deck.colors)}</span>
       ${deck.themeLabel ? `<span class="muted">· ${esc(deck.themeLabel)}</span>` : ''}
       <label class="muted">· Bracket <select id="bracket" aria-label="Bracket">${BRACKETS.map((b) => `<option value="${b.n}" ${b.n === deck.bracket ? 'selected' : ''}>${b.n}. ${esc(b.label)}</option>`).join('')}</select></label>
       ${deck.edhSlug ? `<a class="small" href="${edhrecUrl(deck.edhSlug, deck.theme)}" target="_blank" rel="noopener">EDHREC ↗</a>` : ''}
-      <span class="chips" id="view-mode">${[['grid', 'Images'], ['list', 'List'], ['strategy', 'Strategy']].map(([m, l]) => `<button class="chip" type="button" data-mode="${m}" aria-pressed="${v.mode === m}">${l}</button>`).join('')}</span>
+      <span class="chips" id="view-mode">${[['grid', 'Cards'], ['list', 'Details'], ['strategy', 'Strategy']].map(([m, l]) => `<button class="chip" type="button" data-mode="${m}" aria-pressed="${v.mode === m}">${l}</button>`).join('')}</span>
     </div>
     <div id="issues"></div>
     <div class="editor">
@@ -98,6 +99,9 @@ function makeCtx(root, deck) {
       renderIssues(root, deck, ctx);
       renderSide(root, deck, ctx);
       const st = deckStats(deck, lookup);
+      const cost = deckCost(deck, lookup, { commanderOwned: (freeByKey(deck.id).get(nameKey(deck.commander)) || 0) > 0 || !!deck.external?.[deck.commander] });
+      root.querySelector('#cost-label').innerHTML = `· Deck value <b>$${cost.total.toFixed(2)}</b>${cost.toBuyCount ? ` · <a href="javascript:void 0" id="cost-buy" class="buy-cost">To buy: <b>$${cost.toBuy.toFixed(2)}</b> (${cost.toBuyCount} card${cost.toBuyCount === 1 ? '' : 's'})</a>` : ' · Nothing to buy'}${cost.unpriced ? ` <span class="muted">(${cost.unpriced} without a price)</span>` : ''}`;
+      root.querySelector('#cost-buy')?.addEventListener('click', () => { v.side = 'buy'; renderSide(root, deck, ctx); });
       root.querySelector('#size-label').textContent = `${deckSize(deck)} / ${FORMAT.size} cards · ${st.lands} lands · avg mana value ${st.avgCmc.toFixed(2)}`;
     },
     async swap(out, inName) {
@@ -245,9 +249,8 @@ function renderMain(root, deck, ctx) {
     const n = items.reduce((a, x) => a + x.count, 0);
     let out = `<div class="section-head"><h3>${title}</h3><span class="muted small">${n}</span></div>`;
     if (v.mode === 'grid') {
-      out += `<div class="grid">${items.map((x) => tileHTML(x.card, {
-        count: x.count > 1 ? x.count : null, actions: actions(x.name), combo: comboKeys.has(nameKey(x.name)), ...badgeFor(x.name, x.count),
-        attrs: `data-tags="${esc(tagsFor(x).join(' · '))}"`,
+      out += `<div class="thumb-list">${items.map((x) => thumbRowHTML(x.card, {
+        count: x.count, actions: actions(x.name), combo: comboKeys.has(nameKey(x.name)), chips: chips(tagsFor(x)), ...badgeFor(x.name, x.count),
       })).join('')}</div>`;
     } else out += `<table class="list"><tbody>${items.map(row).join('')}</tbody></table>`;
     return out;
@@ -255,7 +258,7 @@ function renderMain(root, deck, ctx) {
   let html = '';
   if (deck.commander) {
     const c = lookup(deck.commander);
-    html += `<div class="section-head"><h3>Commander</h3></div><div class="grid">${c ? tileHTML(c, badgeFor(deck.commander, 1)) : esc(deck.commander)}</div>`;
+    html += `<div class="section-head"><h3>Commander</h3></div><div class="thumb-list commander-row">${c ? thumbRowHTML(c, badgeFor(deck.commander, 1)) : esc(deck.commander)}</div>`;
   }
   if (v.mode === 'strategy') {
     const byGroup = Object.fromEntries(STRATEGY_GROUPS.map(([k]) => [k, []]));
